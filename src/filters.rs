@@ -268,6 +268,9 @@ fn bilateral_from_sigma_map(
         );
     } else {
         let rows_per_chunk = img.h.div_ceil(workers);
+        // Явные срезы позволяют потокам совместно читать одну рамку без
+        // перемещения вектора в первую замкнутую функцию.
+        let padded_ref: &[f32] = &padded;
         thread::scope(|scope| {
             for (chunk_index, out_chunk) in out.chunks_mut(rows_per_chunk * img.w).enumerate() {
                 let start_y = chunk_index * rows_per_chunk;
@@ -278,7 +281,7 @@ fn bilateral_from_sigma_map(
                         img.w,
                         side,
                         padded_w,
-                        &padded,
+                        padded_ref,
                         &img.data,
                         sigma_r,
                         spatial,
@@ -557,6 +560,9 @@ fn ycbcr_from_sigma_map(
         );
     } else {
         let rows_per_chunk = img.h().div_ceil(workers);
+        let padded_y_ref: &[f32] = &padded_y;
+        let padded_cb_ref: &[f32] = &padded_cb;
+        let padded_cr_ref: &[f32] = &padded_cr;
         thread::scope(|scope| {
             for (chunk_index, out_chunk) in out.chunks_mut(rows_per_chunk * img.w()).enumerate() {
                 let start_y = chunk_index * rows_per_chunk;
@@ -567,9 +573,9 @@ fn ycbcr_from_sigma_map(
                         img.w(),
                         side,
                         padded_w,
-                        &padded_y,
-                        &padded_cb,
-                        &padded_cr,
+                        padded_y_ref,
+                        padded_cb_ref,
+                        padded_cr_ref,
                         img,
                         sigma_r_y,
                         chroma_factor,
