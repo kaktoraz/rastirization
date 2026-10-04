@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   benchmark:
@@ -31,9 +31,16 @@ jobs:
             --noise 10,20,25,30,40 --save-sigma 25 \
             | tee benchmark-artifact/bench.log
 
-      - name: Upload tables and log
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-${{ github.sha }}
-          path: benchmark-artifact/
-          if-no-files-found: error
+      - name: Save reproducible tables in the branch
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          cp benchmark-artifact/results/tables/results.csv results/tables/results.csv
+          cp benchmark-artifact/bench.log results/logs/bench.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/tables/results.csv results/logs/bench.log
+          if ! git diff --cached --quiet; then
+            git commit -m "Обновить результаты воспроизводимого бенчмарка [skip ci]"
+            git push origin "HEAD:refs/heads/${BRANCH}"
+          fi
