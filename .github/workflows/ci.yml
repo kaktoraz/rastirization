@@ -21,7 +21,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build release binary
-        run: cargo build --release --locked
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo build --release --locked 2>&1 | tee cargo-build.log
+
+      - name: Surface compiler diagnostics
+        if: steps.build.outcome == 'failure'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('cargo-build.log').read_text(errors='replace').splitlines()[-80:]
+          message = '\n'.join(text).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error file=src/filters.rs::{message}')
+          PY
+          exit 1
 
       - name: Run unit tests
+        if: steps.build.outcome == 'success'
         run: cargo test --release --locked
