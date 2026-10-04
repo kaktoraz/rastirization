@@ -59,16 +59,16 @@ method. Numbers and plots are generated from `results/tables/results.csv` by
 | Method | PSNR, dB | SSIM | EPI | Time, ms |
 |---|---:|---:|---:|---:|
 | Gaussian | 26.19 | 0.6584 | 0.3272 | 3.5 |
-| Perona–Malik (own implementation) | 29.25 | 0.7633 | 0.5399 | 55.2 |
-| Bilateral | 27.25 | 0.5980 | 0.4958 | 64.4 |
+| Perona–Malik (own implementation) | 29.25 | 0.7633 | 0.5399 | 55.0 |
+| Bilateral | 27.25 | 0.5980 | 0.4958 | 64.6 |
 | Bilateral “oracle”¹ | 30.66 | 0.7989 | 0.6018 | — |
-| ACSF without adaptation | 29.60 | 0.7680 | 0.6005 | 18.3 |
-| **ACSF** | **30.35** | **0.7978** | **0.6340** | **19.5** |
+| ACSF without adaptation | 29.60 | 0.7680 | 0.6005 | 18.8 |
+| **ACSF** | **30.35** | **0.7978** | **0.6340** | **19.9** |
 
 ¹ The oracle selects bilateral parameters using the clean reference. It is a
 diagnostic upper bound, not a deployable method or a timing baseline.
 
-Across four real 512×512 scenes, public ACSF averaged **19.27 ms**, below the
+Across four real 512×512 scenes, public ACSF averaged **19.38 ms**, below the
 30 ms target. A regression test compares its public separable path against the
 preserved exact 2D implementation at the same estimated `σ̂`; a PSNR loss above
 0.05 dB fails the test.
@@ -85,8 +85,8 @@ frame. The mean ACSF advantage is **+3.099 dB**; a one-sided paired t-test gives
 This is not three independent RGB filters. In the RGB→YCbCr mode the activity
 map and `σr(p)` are calculated from luminance `Y`, while `Y`, `Cb`, and `Cr` are
 filtered jointly with a chroma-aware weight. On 3 colour scenes × 6 noise
-levels, ACSF scored **31.23 dB / 0.8413 SSIM / 0.2728 EPI / 123.6 ms** versus
-bilateral **28.65 dB / 0.6053 / 0.2479 / 121.5 ms**. See
+levels, ACSF scored **31.23 dB / 0.8413 SSIM / 0.2728 EPI / 125.2 ms** versus
+bilateral **28.65 dB / 0.6053 / 0.2479 / 121.1 ms**. See
 [`results/color/tables`](results/color/tables/) for the complete data.
 
 ![PSNR versus noise level](results/plots/fig_psnr_vs_sigma.png)
@@ -160,7 +160,7 @@ The short CLI help is printed when the binary is run without a subcommand.
 
 A fixed historical benchmark progressed **241.9 → 70.9 → 20.47 ms** (direct
 2D → integral-image exact 2D → public separable implementation). The expanded
-current protocol confirms 19.27 ms on 512×512 scenes.
+current protocol confirms 19.38 ms on 512×512 scenes.
 
 ## Repository layout and data
 
