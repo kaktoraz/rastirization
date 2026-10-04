@@ -538,9 +538,11 @@ impl Default for AcsfParams {
     fn default() -> Self {
         Self {
             sigma_s: 2.0,
-            k_min: 0.7,
-            k_max: 3.2,
-            c: 1.2,
+            // Выбрано повторной калибровкой только на sigma=20 и sigma=30;
+            // остальные уровни шума не использовались при выборе параметров.
+            k_min: 0.85,
+            k_max: 3.6,
+            c: 1.3,
             radius: 5,
             radius_struct: 2,
         }
@@ -932,6 +934,25 @@ mod tests {
         assert!(
             psnr(&exact, &fast_2d, 255.0) > 60.0,
             "ускоренная 2D-версия заметно отличается от точного эталона"
+        );
+    }
+
+    /// Защита публичного сепарабельного пути: допустима потеря не более
+    /// 0,05 dB относительно сохранённой точной 2D-версии при одинаковой
+    /// автоматически оценённой величине шума.
+    #[test]
+    fn public_separable_acsf_loses_no_more_than_point_zero_five_db_to_exact_2d() {
+        let clean = synthetic_image(96, 72);
+        let noisy = add_gaussian_noise(&clean, 20.0, 0xAC5F_2026);
+        let params = AcsfParams::default();
+        let public_result = acsf(&noisy, &params);
+        let exact_result = acsf_2d_at_known_sigma(&noisy, &params, public_result.sigma_n);
+        let public_psnr = psnr(&clean, &public_result.img, 255.0);
+        let exact_psnr = psnr(&clean, &exact_result.img, 255.0);
+        let loss_db = exact_psnr - public_psnr;
+        assert!(
+            loss_db <= 0.05,
+            "сепарабельный публичный ACSF потерял {loss_db:.4} dB: exact={exact_psnr:.4}, public={public_psnr:.4}"
         );
     }
 

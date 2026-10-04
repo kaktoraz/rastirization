@@ -207,11 +207,20 @@ pub fn run_bench(
             rows.push(row);
 
             let params = AcsfParams::default();
+            let acsf_param = format!(
+                "ss={};kmin={};kmax={};c={};r={};rs={}",
+                params.sigma_s,
+                params.k_min,
+                params.k_max,
+                params.c,
+                params.radius,
+                params.radius_struct
+            );
             let (out_acsf, row) = eval_gray(
                 clean,
                 name,
                 "acsf",
-                "ss=2.0;kmin=0.7;kmax=3.2;c=1.2;r=5;rs=2",
+                &acsf_param,
                 sigma,
                 || acsf(&noisy, &params).img,
             );
@@ -352,11 +361,20 @@ pub fn run_color_bench(
             rows.push(row);
 
             let params = AcsfParams::default();
+            let acsf_param = format!(
+                "ss={};kmin={};kmax={};c={};r={};rs={};sc=1.5*srY",
+                params.sigma_s,
+                params.k_min,
+                params.k_max,
+                params.c,
+                params.radius,
+                params.radius_struct
+            );
             let (out_acsf, row) = eval_color(
                 clean,
                 name,
                 "acsf_ycbcr",
-                "ss=2.0;kmin=0.7;kmax=3.2;c=1.2;r=5;rs=2;sc=1.5*srY",
+                &acsf_param,
                 sigma,
                 || acsf_ycbcr(&noisy, &params).img,
             );
