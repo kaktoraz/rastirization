@@ -1,0 +1,36 @@
+name: Reproducible benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Full grayscale benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Run deterministic benchmark
+        run: |
+          mkdir -p benchmark-artifact
+          ./target/release/smoothing_project bench \
+            -d data/clean -o benchmark-artifact/results \
+            --noise 10,20,25,30,40 --save-sigma 25 \
+            | tee benchmark-artifact/bench.log
+
+      - name: Upload tables and log
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ github.sha }}
+          path: benchmark-artifact/
+          if-no-files-found: error
