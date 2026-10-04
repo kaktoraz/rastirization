@@ -216,14 +216,9 @@ pub fn run_bench(
                 params.radius,
                 params.radius_struct
             );
-            let (out_acsf, row) = eval_gray(
-                clean,
-                name,
-                "acsf",
-                &acsf_param,
-                sigma,
-                || acsf(&noisy, &params).img,
-            );
+            let (out_acsf, row) = eval_gray(clean, name, "acsf", &acsf_param, sigma, || {
+                acsf(&noisy, &params).img
+            });
             rows.push(row);
 
             let middle = (params.k_min + params.k_max) / 2.0;
@@ -370,14 +365,9 @@ pub fn run_color_bench(
                 params.radius,
                 params.radius_struct
             );
-            let (out_acsf, row) = eval_color(
-                clean,
-                name,
-                "acsf_ycbcr",
-                &acsf_param,
-                sigma,
-                || acsf_ycbcr(&noisy, &params).img,
-            );
+            let (out_acsf, row) = eval_color(clean, name, "acsf_ycbcr", &acsf_param, sigma, || {
+                acsf_ycbcr(&noisy, &params).img
+            });
             rows.push(row);
 
             if save_sigma.is_some_and(|value| (value - sigma).abs() < 1e-9) {
