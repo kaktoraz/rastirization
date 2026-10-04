@@ -294,6 +294,199 @@ fn bilateral_from_sigma_map(
     GrayF::new(img.w, img.h, out)
 }
 
+/// Одномерное пространственное ядро. Два прохода дают точный 2D гауссиан в
+/// отсутствии range-веса и быструю, общепринятую сепарабельную аппроксимацию
+/// билатерального фильтра в общем случае.
+fn spatial_line(radius: usize, sigma_s: f32) -> Vec<f32> {
+    let side = 2 * radius + 1;
+    let denom = 2.0 * sigma_s.max(1e-3).powi(2);
+    (0..side)
+        .map(|i| {
+            let d = i as f32 - radius as f32;
+            (-(d * d) / denom).exp()
+        })
+        .collect()
+}
+
+fn process_horizontal_rows(
+    out: &mut [f32],
+    start_y: usize,
+    width: usize,
+    radius: usize,
+    padded_w: usize,
+    padded: &[f32],
+    input: &[f32],
+    sigma_r: &[f32],
+    line: &[f32],
+    exp_lut: &ExpLut,
+) {
+    for local_y in 0..(out.len() / width) {
+        let y = start_y + local_y;
+        let row = &mut out[local_y * width..(local_y + 1) * width];
+        for x in 0..width {
+            let index = y * width + x;
+            let center = input[index];
+            let inv_two_sigma_sq = 1.0 / (2.0 * sigma_r[index].max(1e-3).powi(2));
+            let source = (y + radius) * padded_w + x;
+            let mut weighted_sum = 0.0;
+            let mut weights = 0.0;
+            for (i, &spatial) in line.iter().enumerate() {
+                let value = padded[source + i];
+                let difference = value - center;
+                let weight = spatial * exp_lut.value(difference * difference * inv_two_sigma_sq);
+                weights += weight;
+                weighted_sum += weight * value;
+            }
+            row[x] = weighted_sum / weights;
+        }
+    }
+}
+
+fn process_vertical_rows(
+    out: &mut [f32],
+    start_y: usize,
+    width: usize,
+    radius: usize,
+    padded_w: usize,
+    padded_values: &[f32],
+    padded_guidance: &[f32],
+    input_guidance: &[f32],
+    sigma_r: &[f32],
+    line: &[f32],
+    exp_lut: &ExpLut,
+) {
+    for local_y in 0..(out.len() / width) {
+        let y = start_y + local_y;
+        let row = &mut out[local_y * width..(local_y + 1) * width];
+        for x in 0..width {
+            let index = y * width + x;
+            let center = input_guidance[index];
+            let inv_two_sigma_sq = 1.0 / (2.0 * sigma_r[index].max(1e-3).powi(2));
+            let source = y * padded_w + x + radius;
+            let mut weighted_sum = 0.0;
+            let mut weights = 0.0;
+            for (j, &spatial) in line.iter().enumerate() {
+                let at = source + j * padded_w;
+                let difference = padded_guidance[at] - center;
+                let weight = spatial * exp_lut.value(difference * difference * inv_two_sigma_sq);
+                weights += weight;
+                weighted_sum += weight * padded_values[at];
+            }
+            row[x] = weighted_sum / weights;
+        }
+    }
+}
+
+fn parallel_horizontal(
+    img: &GrayF,
+    radius: usize,
+    sigma_r: &[f32],
+    line: &[f32],
+    exp_lut: &ExpLut,
+) -> GrayF {
+    let (padded, padded_w) = padded_data(img, radius);
+    let mut out = vec![0.0; img.data.len()];
+    let workers = worker_count(img.w, img.h);
+    if workers == 1 {
+        process_horizontal_rows(
+            &mut out,
+            0,
+            img.w,
+            radius,
+            padded_w,
+            &padded,
+            &img.data,
+            sigma_r,
+            line,
+            exp_lut,
+        );
+    } else {
+        let rows_per_chunk = img.h.div_ceil(workers);
+        let padded_ref: &[f32] = &padded;
+        thread::scope(|scope| {
+            for (chunk_index, out_chunk) in out.chunks_mut(rows_per_chunk * img.w).enumerate() {
+                let start_y = chunk_index * rows_per_chunk;
+                scope.spawn(move || {
+                    process_horizontal_rows(
+                        out_chunk,
+                        start_y,
+                        img.w,
+                        radius,
+                        padded_w,
+                        padded_ref,
+                        &img.data,
+                        sigma_r,
+                        line,
+                        exp_lut,
+                    );
+                });
+            }
+        });
+    }
+    GrayF::new(img.w, img.h, out)
+}
+
+fn separable_bilateral_from_sigma_map(
+    img: &GrayF,
+    radius: usize,
+    sigma_s: f32,
+    sigma_r: &[f32],
+    exp_lut: &ExpLut,
+) -> GrayF {
+    // Первый проход использует исходную яркость и sigma_r строки.
+    let horizontal = parallel_horizontal(img, radius, sigma_r, &spatial_line(radius, sigma_s), exp_lut);
+
+    // Во втором проходе значения берутся из горизонтально сглаженного кадра,
+    // а range-весы — из исходной яркости. Поэтому границы определяются той же
+    // наблюдаемой сценой, что и в исходной 2D формуле.
+    let (padded_values, padded_w) = padded_data(&horizontal, radius);
+    let (padded_guidance, guidance_w) = padded_data(img, radius);
+    assert_eq!(padded_w, guidance_w);
+    let line = spatial_line(radius, sigma_s);
+    let mut out = vec![0.0; img.data.len()];
+    let workers = worker_count(img.w, img.h);
+    if workers == 1 {
+        process_vertical_rows(
+            &mut out,
+            0,
+            img.w,
+            radius,
+            padded_w,
+            &padded_values,
+            &padded_guidance,
+            &img.data,
+            sigma_r,
+            &line,
+            exp_lut,
+        );
+    } else {
+        let rows_per_chunk = img.h.div_ceil(workers);
+        let values_ref: &[f32] = &padded_values;
+        let guidance_ref: &[f32] = &padded_guidance;
+        thread::scope(|scope| {
+            for (chunk_index, out_chunk) in out.chunks_mut(rows_per_chunk * img.w).enumerate() {
+                let start_y = chunk_index * rows_per_chunk;
+                scope.spawn(move || {
+                    process_vertical_rows(
+                        out_chunk,
+                        start_y,
+                        img.w,
+                        radius,
+                        padded_w,
+                        values_ref,
+                        guidance_ref,
+                        &img.data,
+                        sigma_r,
+                        &line,
+                        exp_lut,
+                    );
+                });
+            }
+        });
+    }
+    GrayF::new(img.w, img.h, out)
+}
+
 /// Классический билатеральный фильтр.
 ///
 /// w(p,q) = exp(-|p-q|²/(2 sigma_s²)) exp(-(I(p)-I(q))²/(2 sigma_r²)).
@@ -401,18 +594,26 @@ fn sigma_map(activity: &[f32], p: &AcsfParams, sigma_n: f64, exp_lut: &ExpLut) -
         .collect()
 }
 
-fn acsf_at_known_sigma(noisy: &GrayF, p: &AcsfParams, sigma_n: f64) -> AcsfResult {
+/// Быстрая, но всё ещё 2D версия нужна для регрессионной проверки точности
+/// LUT и интегральной карты активности. Основной АКСФ ниже использует
+/// сепарабельную аппроксимацию именно пространственного прохода.
+fn acsf_2d_at_known_sigma(noisy: &GrayF, p: &AcsfParams, sigma_n: f64) -> AcsfResult {
     let sigma_n = sigma_n.max(1.0);
     let activity = structural_activity(noisy, p.radius_struct, sigma_n);
     let exp_lut = ExpLut::new();
     let ranges = sigma_map(&activity, p, sigma_n, &exp_lut);
     let spatial = spatial_table(p.radius, p.sigma_s);
     let img = bilateral_from_sigma_map(noisy, p.radius, &spatial, &ranges, &exp_lut);
-    AcsfResult {
-        img,
-        sigma_n,
-        activity,
-    }
+    AcsfResult { img, sigma_n, activity }
+}
+
+fn acsf_at_known_sigma(noisy: &GrayF, p: &AcsfParams, sigma_n: f64) -> AcsfResult {
+    let sigma_n = sigma_n.max(1.0);
+    let activity = structural_activity(noisy, p.radius_struct, sigma_n);
+    let exp_lut = ExpLut::new();
+    let ranges = sigma_map(&activity, p, sigma_n, &exp_lut);
+    let img = separable_bilateral_from_sigma_map(noisy, p.radius, p.sigma_s, &ranges, &exp_lut);
+    AcsfResult { img, sigma_n, activity }
 }
 
 /// АКСФ с автоматической оценкой уровня шума по Иммеркеру.
@@ -751,10 +952,10 @@ mod tests {
         let noisy = add_gaussian_noise(&clean, 20.0, 12345);
         let p = AcsfParams::default();
         let exact = exact_acsf_with_sigma(&noisy, &p, 20.0);
-        let fast = acsf_with_sigma(&noisy, &p, 20.0).img;
+        let fast_2d = acsf_2d_at_known_sigma(&noisy, &p, 20.0).img;
         assert!(
-            psnr(&exact, &fast, 255.0) > 60.0,
-            "ускоренная версия заметно отличается от точного эталона"
+            psnr(&exact, &fast_2d, 255.0) > 60.0,
+            "ускоренная 2D-версия заметно отличается от точного эталона"
         );
     }
 
