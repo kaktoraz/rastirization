@@ -1,0 +1,13 @@
+[package]
+name = "smoothing_project"
+version = "1.0.0"
+edition = "2021"
+description = "Учебный проект: разработка и исследование методов сглаживания изображений (адаптивный контрастно-структурный фильтр)"
+
+[dependencies]
+# Единственная внешняя зависимость: чтение/запись распространённых форматов изображений (PNG, JPEG, ...)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+
+[profile.release]
+opt-level = 3
+lto = true

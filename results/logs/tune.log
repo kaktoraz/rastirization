@@ -1,0 +1,30 @@
+
+конфигурация (ss,kmin,kmax,c,r,rs)         PSNR ср.   SSIM ср.    EPI ср.
+2.0,0.45,2.2,1.0,5,2                          24.73     0.6774     0.5160
+    baboon         PSNR=23.92  SSIM=0.6633  EPI=0.6116
+    board          PSNR=22.84  SSIM=0.7678  EPI=0.7162
+    fruits         PSNR=27.44  SSIM=0.6010  EPI=0.2203
+2.0,0.45,3.2,1.0,5,2                          25.29     0.7137     0.5282
+    baboon         PSNR=24.10  SSIM=0.6601  EPI=0.6071
+    board          PSNR=23.00  SSIM=0.7748  EPI=0.7238
+    fruits         PSNR=28.76  SSIM=0.7063  EPI=0.2537
+2.0,0.7,3.2,1.2,5,2                           25.65     0.7187     0.5369
+    baboon         PSNR=24.26  SSIM=0.6472  EPI=0.6076
+    board          PSNR=23.27  SSIM=0.7701  EPI=0.7326
+    fruits         PSNR=29.43  SSIM=0.7388  EPI=0.2704
+2.0,0.9,4.5,1.3,5,2                           25.49     0.7042     0.5426
+    baboon         PSNR=23.71  SSIM=0.5902  EPI=0.5884
+    board          PSNR=22.88  SSIM=0.7324  EPI=0.7301
+    fruits         PSNR=29.90  SSIM=0.7901  EPI=0.3091
+1.5,0.7,3.2,1.2,3,2                           25.68     0.7228     0.5412
+    baboon         PSNR=24.42  SSIM=0.6628  EPI=0.6074
+    board          PSNR=23.40  SSIM=0.7799  EPI=0.7348
+    fruits         PSNR=29.22  SSIM=0.7255  EPI=0.2815
+2.5,0.7,3.2,1.2,5,2                           25.52     0.7131     0.5349
+    baboon         PSNR=24.10  SSIM=0.6388  EPI=0.6088
+    board          PSNR=23.13  SSIM=0.7633  EPI=0.7311
+    fruits         PSNR=29.33  SSIM=0.7372  EPI=0.2647
+2.0,0.7,3.2,1.2,5,1                           25.23     0.6954     0.5182
+    baboon         PSNR=23.94  SSIM=0.6347  EPI=0.5952
+    board          PSNR=22.82  SSIM=0.7490  EPI=0.7275
+    fruits         PSNR=28.93  SSIM=0.7025  EPI=0.2318
