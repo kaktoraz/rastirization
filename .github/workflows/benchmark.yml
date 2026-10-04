@@ -1,6 +1,9 @@
 name: Reproducible benchmark
 
 on:
+  push:
+    branches:
+      - arena/01a1074a-rastirization
   workflow_dispatch:
 
 permissions:
