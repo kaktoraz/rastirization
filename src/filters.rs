@@ -463,6 +463,7 @@ fn separable_bilateral_from_sigma_map(
         let rows_per_chunk = img.h.div_ceil(workers);
         let values_ref: &[f32] = &padded_values;
         let guidance_ref: &[f32] = &padded_guidance;
+        let line_ref: &[f32] = &line;
         thread::scope(|scope| {
             for (chunk_index, out_chunk) in out.chunks_mut(rows_per_chunk * img.w).enumerate() {
                 let start_y = chunk_index * rows_per_chunk;
@@ -477,7 +478,7 @@ fn separable_bilateral_from_sigma_map(
                         guidance_ref,
                         &img.data,
                         sigma_r,
-                        &line,
+                        line_ref,
                         exp_lut,
                     );
                 });
