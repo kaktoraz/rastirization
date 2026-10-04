@@ -1,0 +1,29 @@
+# Rust build artefacts
+/target/
+
+# User inputs and generated personal results
+/my_images/*
+!/my_images/.gitkeep
+/my_results/
+
+# Generated benchmark images: regenerate with `bench --save-sigma ...`
+/results/**/images/
+
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
+
+# Archives and local/editor files
+*.zip
+*.tar
+*.tar.gz
+*.tar.xz
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local credentials and Python environments
+.env
+.venv/
+venv/

@@ -1,0 +1,33 @@
+Парные независимые прогоны: 30; случаи в каждом прогоне: изображения × sigma
+  run  1/30: bilateral=27.253 dB, ACSF=30.353 dB, delta=+3.100 dB
+  run  2/30: bilateral=27.251 dB, ACSF=30.354 dB, delta=+3.102 dB
+  run  3/30: bilateral=27.252 dB, ACSF=30.355 dB, delta=+3.103 dB
+  run  4/30: bilateral=27.256 dB, ACSF=30.351 dB, delta=+3.095 dB
+  run  5/30: bilateral=27.257 dB, ACSF=30.357 dB, delta=+3.100 dB
+  run  6/30: bilateral=27.253 dB, ACSF=30.354 dB, delta=+3.101 dB
+  run  7/30: bilateral=27.253 dB, ACSF=30.339 dB, delta=+3.086 dB
+  run  8/30: bilateral=27.252 dB, ACSF=30.349 dB, delta=+3.097 dB
+  run  9/30: bilateral=27.250 dB, ACSF=30.344 dB, delta=+3.095 dB
+  run 10/30: bilateral=27.254 dB, ACSF=30.353 dB, delta=+3.099 dB
+  run 11/30: bilateral=27.256 dB, ACSF=30.353 dB, delta=+3.097 dB
+  run 12/30: bilateral=27.252 dB, ACSF=30.347 dB, delta=+3.095 dB
+  run 13/30: bilateral=27.258 dB, ACSF=30.353 dB, delta=+3.094 dB
+  run 14/30: bilateral=27.255 dB, ACSF=30.360 dB, delta=+3.106 dB
+  run 15/30: bilateral=27.257 dB, ACSF=30.356 dB, delta=+3.099 dB
+  run 16/30: bilateral=27.253 dB, ACSF=30.353 dB, delta=+3.100 dB
+  run 17/30: bilateral=27.250 dB, ACSF=30.356 dB, delta=+3.105 dB
+  run 18/30: bilateral=27.249 dB, ACSF=30.350 dB, delta=+3.101 dB
+  run 19/30: bilateral=27.256 dB, ACSF=30.356 dB, delta=+3.100 dB
+  run 20/30: bilateral=27.252 dB, ACSF=30.357 dB, delta=+3.105 dB
+  run 21/30: bilateral=27.256 dB, ACSF=30.346 dB, delta=+3.090 dB
+  run 22/30: bilateral=27.251 dB, ACSF=30.356 dB, delta=+3.105 dB
+  run 23/30: bilateral=27.252 dB, ACSF=30.350 dB, delta=+3.097 dB
+  run 24/30: bilateral=27.255 dB, ACSF=30.353 dB, delta=+3.098 dB
+  run 25/30: bilateral=27.255 dB, ACSF=30.356 dB, delta=+3.102 dB
+  run 26/30: bilateral=27.254 dB, ACSF=30.358 dB, delta=+3.104 dB
+  run 27/30: bilateral=27.253 dB, ACSF=30.356 dB, delta=+3.103 dB
+  run 28/30: bilateral=27.251 dB, ACSF=30.349 dB, delta=+3.099 dB
+  run 29/30: bilateral=27.256 dB, ACSF=30.360 dB, delta=+3.104 dB
+  run 30/30: bilateral=27.249 dB, ACSF=30.348 dB, delta=+3.098 dB
+Средняя парная разница АКСФ − bilateral: +3.099 дБ
+Сырые пары для t-теста: benchmark-artifact/results/tables/significance_runs.csv

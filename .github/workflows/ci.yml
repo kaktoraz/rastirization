@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test (stable Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Build release binary
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo build --release --locked 2>&1 | tee cargo-build.log
+
+      - name: Surface compiler diagnostics
+        if: steps.build.outcome == 'failure'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('cargo-build.log').read_text(errors='replace').splitlines()[-80:]
+          message = '\n'.join(text).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error file=src/filters.rs::{message}')
+          PY
+          exit 1
+
+      - name: Run unit tests
+        if: steps.build.outcome == 'success'
+        run: cargo test --release --locked
