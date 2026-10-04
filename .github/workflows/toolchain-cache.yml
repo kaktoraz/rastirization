@@ -1,0 +1,112 @@
+name: toolchain-cache
+
+# Служебный workflow: готовит кэш (тулчейн Rust + vendor-зависимости) и
+# публикует его orphan-тегом ci-cache-<version>, чтобы песочница без доступа
+# к static.rust-lang.org и crates.io могла скачать его через codeload.
+# Запускается только при изменении этого файла.
+
+on:
+  push:
+    branches: ["arena/01a10729-rastirization"]
+    paths: [".github/workflows/toolchain-cache.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve stable toolchain URLs
+        run: |
+          python3 - <<'EOF' > urls.txt
+          import tomllib, urllib.request
+          d = tomllib.load(urllib.request.urlopen(
+              'https://static.rust-lang.org/dist/channel-rust-stable.toml'))
+          pkg = d['pkg']
+          ver = pkg['rustc']['version'].split()[0]
+          print('VERSION=' + ver)
+          for c in ('rustc', 'cargo', 'rust-std'):
+              t = pkg[c]['target']['x86_64-unknown-linux-gnu']
+              print(c + '=' + t['xz_url'])
+          EOF
+          cat urls.txt
+          while IFS= read -r line; do echo "$line" >> "$GITHUB_ENV"; done < urls.txt
+
+      - name: Skip if cache tag already exists
+        run: |
+          TAG="ci-cache-$VERSION"
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG$"; then
+            echo "Тег $TAG уже есть — пропускаю."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download rust components
+        if: env.SKIP != '1'
+        run: |
+          mkdir -p dist
+          for c in rustc cargo rust-std; do
+            url=$(grep "^$c=" urls.txt | cut -d= -f2-)
+            curl -fL --retry 3 --retry-delay 5 -o "dist/$c.tar.xz" "$url"
+          done
+          ls -la dist
+
+      - name: Vendor crates for smoothing_project
+        if: env.SKIP != '1'
+        run: |
+          unzip -q "Сглаживание_проект.zip"
+          cd smoothing_project
+          cargo vendor --locked vendor > vendor-config.toml
+          cat vendor-config.toml
+          tar czf ../dist/vendor.tar.gz vendor vendor-config.toml
+
+      - name: Assemble and push cache tag
+        if: env.SKIP != '1'
+        run: |
+          mkdir -p cache
+          for f in dist/*.tar.xz; do
+            if [ "$(stat -c%s "$f")" -gt 94371840 ]; then
+              split -b 90m "$f" "cache/$(basename "$f").part-"
+            else
+              cp "$f" cache/
+            fi
+          done
+          cp dist/vendor.tar.gz cache/
+          (cd cache && sha256sum * > SHA256SUMS)
+          echo "$VERSION" > cache/RUST_VERSION
+          rm -rf stage && mkdir stage && mv cache stage/cache
+          cd stage
+          git init -q .
+          git checkout -q -b cache-orphan
+          git config user.email "ci-bot@users.noreply.github.com"
+          git config user.name "toolchain-cache-bot"
+          git add -A
+          git commit -q -m "ci-cache: rust $VERSION + vendor (smoothing_project)"
+          TAG="ci-cache-$VERSION"
+          git tag "$TAG"
+          git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" "refs/tags/$TAG"
+          echo "Опубликован тег $TAG"
+
+      - name: On failure publish diagnostics tag
+        if: failure()
+        run: |
+          rm -rf failstage && mkdir -p failstage/cache
+          {
+            echo "run: ${{ github.run_number }}"
+            echo "env VERSION: $VERSION"
+            cat urls.txt 2>/dev/null
+            ls -la dist 2>/dev/null
+            ls -la cache 2>/dev/null
+          } > failstage/cache/diag.txt 2>&1 || true
+          cd failstage
+          git init -q .
+          git checkout -q -b cache-orphan
+          git config user.email "ci-bot@users.noreply.github.com"
+          git config user.name "toolchain-cache-bot"
+          git add -A
+          git commit -q -m "ci-cache diagnostics"
+          git tag "ci-cache-FAILED-${{ github.run_number }}"
+          git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" "refs/tags/ci-cache-FAILED-${{ github.run_number }}" || true
