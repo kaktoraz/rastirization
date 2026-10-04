@@ -22,8 +22,8 @@
 
 === Средние значения ===
 метод                   PSNR,дБ       SSIM        EPI     время,мс
-raw_ycbcr                 24.00     0.3799     0.2168          1.0
-bilateral_ycbcr           28.65     0.6053     0.2479        121.5
-acsf_ycbcr                31.23     0.8413     0.2728        123.6
+raw_ycbcr                 24.00     0.3799     0.2168          1.1
+bilateral_ycbcr           28.65     0.6053     0.2479        121.1
+acsf_ycbcr                31.23     0.8413     0.2728        125.2
 
 Подробная таблица: benchmark-artifact/results/color/tables/results.csv
