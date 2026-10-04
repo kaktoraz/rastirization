@@ -76,8 +76,16 @@ pub struct YCbCrF {
 
 impl YCbCrF {
     pub fn new(y: GrayF, cb: GrayF, cr: GrayF) -> Self {
-        assert_eq!((y.w, y.h), (cb.w, cb.h), "размеры каналов YCbCr различаются");
-        assert_eq!((y.w, y.h), (cr.w, cr.h), "размеры каналов YCbCr различаются");
+        assert_eq!(
+            (y.w, y.h),
+            (cb.w, cb.h),
+            "размеры каналов YCbCr различаются"
+        );
+        assert_eq!(
+            (y.w, y.h),
+            (cr.w, cr.h),
+            "размеры каналов YCbCr различаются"
+        );
         Self { y, cb, cr }
     }
 

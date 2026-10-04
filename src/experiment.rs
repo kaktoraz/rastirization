@@ -73,7 +73,9 @@ fn eval_gray(
 /// Метрики цвета вычисляются целиком в YCbCr: PSNR — по среднему MSE трёх
 /// компонент, SSIM и EPI — средние одноимённых метрик для Y, Cb, Cr.
 fn ycbcr_metrics(clean: &YCbCrF, restored: &YCbCrF) -> (f64, f64, f64) {
-    let error = (mse(&clean.y, &restored.y) + mse(&clean.cb, &restored.cb) + mse(&clean.cr, &restored.cr)) / 3.0;
+    let error =
+        (mse(&clean.y, &restored.y) + mse(&clean.cb, &restored.cb) + mse(&clean.cr, &restored.cr))
+            / 3.0;
     let color_psnr = if error <= 1e-12 {
         f64::INFINITY
     } else {
@@ -83,10 +85,9 @@ fn ycbcr_metrics(clean: &YCbCrF, restored: &YCbCrF) -> (f64, f64, f64) {
         + ssim(&clean.cb, &restored.cb)
         + ssim(&clean.cr, &restored.cr))
         / 3.0;
-    let color_epi = (epi(&clean.y, &restored.y)
-        + epi(&clean.cb, &restored.cb)
-        + epi(&clean.cr, &restored.cr))
-        / 3.0;
+    let color_epi =
+        (epi(&clean.y, &restored.y) + epi(&clean.cb, &restored.cb) + epi(&clean.cr, &restored.cr))
+            / 3.0;
     (color_psnr, color_ssim, color_epi)
 }
 
@@ -142,7 +143,8 @@ pub fn run_bench(
             let (_, row) = eval_gray(clean, name, "raw", "-", sigma, || noisy.clone());
             rows.push(row);
 
-            let (out_box, row) = eval_gray(clean, name, "box5", "k=5", sigma, || box_filter(&noisy, 5));
+            let (out_box, row) =
+                eval_gray(clean, name, "box5", "k=5", sigma, || box_filter(&noisy, 5));
             rows.push(row);
 
             let (out_gauss, row) = eval_gray(clean, name, "gauss", "ss=1.5;r=3", sigma, || {
@@ -233,14 +235,62 @@ pub fn run_bench(
 
             if save_sigma.is_some_and(|value| (value - sigma).abs() < 1e-9) {
                 let image_dir = format!("{out_dir}/images");
-                save_from_vec(&format!("{image_dir}/{name}_clean.png"), clean.w, clean.h, &clean.data).ok();
-                save_from_vec(&format!("{image_dir}/{name}_noisy.png"), noisy.w, noisy.h, &noisy.data).ok();
-                save_from_vec(&format!("{image_dir}/{name}_box5.png"), out_box.w, out_box.h, &out_box.data).ok();
-                save_from_vec(&format!("{image_dir}/{name}_gauss.png"), out_gauss.w, out_gauss.h, &out_gauss.data).ok();
-                save_from_vec(&format!("{image_dir}/{name}_median5.png"), out_median.w, out_median.h, &out_median.data).ok();
-                save_from_vec(&format!("{image_dir}/{name}_perona_malik.png"), out_pm.w, out_pm.h, &out_pm.data).ok();
-                save_from_vec(&format!("{image_dir}/{name}_bilateral.png"), out_bilateral.w, out_bilateral.h, &out_bilateral.data).ok();
-                save_from_vec(&format!("{image_dir}/{name}_acsf.png"), out_acsf.w, out_acsf.h, &out_acsf.data).ok();
+                save_from_vec(
+                    &format!("{image_dir}/{name}_clean.png"),
+                    clean.w,
+                    clean.h,
+                    &clean.data,
+                )
+                .ok();
+                save_from_vec(
+                    &format!("{image_dir}/{name}_noisy.png"),
+                    noisy.w,
+                    noisy.h,
+                    &noisy.data,
+                )
+                .ok();
+                save_from_vec(
+                    &format!("{image_dir}/{name}_box5.png"),
+                    out_box.w,
+                    out_box.h,
+                    &out_box.data,
+                )
+                .ok();
+                save_from_vec(
+                    &format!("{image_dir}/{name}_gauss.png"),
+                    out_gauss.w,
+                    out_gauss.h,
+                    &out_gauss.data,
+                )
+                .ok();
+                save_from_vec(
+                    &format!("{image_dir}/{name}_median5.png"),
+                    out_median.w,
+                    out_median.h,
+                    &out_median.data,
+                )
+                .ok();
+                save_from_vec(
+                    &format!("{image_dir}/{name}_perona_malik.png"),
+                    out_pm.w,
+                    out_pm.h,
+                    &out_pm.data,
+                )
+                .ok();
+                save_from_vec(
+                    &format!("{image_dir}/{name}_bilateral.png"),
+                    out_bilateral.w,
+                    out_bilateral.h,
+                    &out_bilateral.data,
+                )
+                .ok();
+                save_from_vec(
+                    &format!("{image_dir}/{name}_acsf.png"),
+                    out_acsf.w,
+                    out_acsf.h,
+                    &out_acsf.data,
+                )
+                .ok();
                 let activity = acsf(&noisy, &params).activity;
                 let activity_image = crate::filters::activity_to_image(&activity, clean.w, clean.h);
                 save_from_vec(
@@ -272,7 +322,11 @@ pub fn run_color_bench(
     std::fs::create_dir_all(format!("{out_dir}/tables")).ok();
 
     for (image_index, (name, clean)) in images.iter().enumerate() {
-        println!("=== цветное изображение: {name} ({}x{}) ===", clean.w(), clean.h());
+        println!(
+            "=== цветное изображение: {name} ({}x{}) ===",
+            clean.w(),
+            clean.h()
+        );
         for &sigma in sigmas {
             let noise_seed = seed + 1_000 * image_index as u64 + sigma as u64;
             let noisy = YCbCrF::new(
@@ -312,7 +366,11 @@ pub fn run_color_bench(
                 let image_dir = format!("{out_dir}/images");
                 save_ycbcr(&format!("{image_dir}/{name}_clean.png"), clean).ok();
                 save_ycbcr(&format!("{image_dir}/{name}_noisy.png"), &noisy).ok();
-                save_ycbcr(&format!("{image_dir}/{name}_bilateral_ycbcr.png"), &out_bilateral).ok();
+                save_ycbcr(
+                    &format!("{image_dir}/{name}_bilateral_ycbcr.png"),
+                    &out_bilateral,
+                )
+                .ok();
                 save_ycbcr(&format!("{image_dir}/{name}_acsf_ycbcr.png"), &out_acsf).ok();
             }
         }
@@ -438,7 +496,13 @@ pub fn run_sweep(
         println!(
             "  {param_name:>12} = {value:<6} : PSNR ср. = {mean_psnr:.2} дБ, худший = {minimum_psnr:.2} дБ, SSIM ср. = {mean_ssim:.4}, EPI ср. = {mean_epi:.4}"
         );
-        out.push((param_name.to_string(), value, mean_psnr, mean_ssim, minimum_psnr));
+        out.push((
+            param_name.to_string(),
+            value,
+            mean_psnr,
+            mean_ssim,
+            minimum_psnr,
+        ));
     }
     out
 }
@@ -455,9 +519,17 @@ pub fn run_configs(
     for config in configs {
         let values: Vec<f64> = config
             .split(',')
-            .map(|part| part.trim().parse().expect("конфигурация: список чисел через запятую"))
+            .map(|part| {
+                part.trim()
+                    .parse()
+                    .expect("конфигурация: список чисел через запятую")
+            })
             .collect();
-        assert_eq!(values.len(), 6, "конфигурация: sigma_s,k_min,k_max,c,radius,radius_struct");
+        assert_eq!(
+            values.len(),
+            6,
+            "конфигурация: sigma_s,k_min,k_max,c,radius,radius_struct"
+        );
         let params = AcsfParams {
             sigma_s: values[0] as f32,
             k_min: values[1] as f32,
@@ -469,7 +541,8 @@ pub fn run_configs(
         let mut per_image = Vec::new();
         let (mut total_psnr, mut total_ssim, mut total_epi, mut total_count) = (0.0, 0.0, 0.0, 0.0);
         for (image_index, (name, clean)) in images.iter().enumerate() {
-            let (mut image_psnr, mut image_ssim, mut image_epi, mut image_count) = (0.0, 0.0, 0.0, 0.0);
+            let (mut image_psnr, mut image_ssim, mut image_epi, mut image_count) =
+                (0.0, 0.0, 0.0, 0.0);
             for &sigma in sigmas {
                 let noise_seed = seed + 1_000 * image_index as u64 + sigma as u64;
                 let noisy = add_gaussian_noise(clean, sigma, noise_seed);

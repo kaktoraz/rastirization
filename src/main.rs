@@ -69,7 +69,12 @@ impl Args {
 fn number_list(args: &Args, key: &str, default: &str) -> Vec<f64> {
     args.get_or(key, default)
         .split(',')
-        .map(|value| value.trim().parse().expect("ожидался список чисел через запятую"))
+        .map(|value| {
+            value
+                .trim()
+                .parse()
+                .expect("ожидался список чисел через запятую")
+        })
         .collect()
 }
 
@@ -266,7 +271,10 @@ fn cmd_denoise(args: &Args) {
     out.save(output).expect("не удалось сохранить результат");
     println!("Результат сохранён: {output}");
     if sigma > 0.0 {
-        println!("PSNR результата: {:.2} дБ", metrics::psnr(&clean, &out, 255.0));
+        println!(
+            "PSNR результата: {:.2} дБ",
+            metrics::psnr(&clean, &out, 255.0)
+        );
     }
 }
 
@@ -285,7 +293,8 @@ fn cmd_noise(args: &Args) {
 }
 
 fn write_rows(out_dir: &str, rows: &[experiment::Row]) -> String {
-    std::fs::create_dir_all(format!("{out_dir}/tables")).expect("не удалось создать каталог таблиц");
+    std::fs::create_dir_all(format!("{out_dir}/tables"))
+        .expect("не удалось создать каталог таблиц");
     let mut csv = String::from(experiment::csv_header());
     csv.push('\n');
     for row in rows {
@@ -299,7 +308,10 @@ fn write_rows(out_dir: &str, rows: &[experiment::Row]) -> String {
 
 fn print_summary(rows: &[experiment::Row], methods: &[&str]) {
     println!("\n=== Средние значения ===");
-    println!("{:<20} {:>10} {:>10} {:>10} {:>12}", "метод", "PSNR,дБ", "SSIM", "EPI", "время,мс");
+    println!(
+        "{:<20} {:>10} {:>10} {:>10} {:>12}",
+        "метод", "PSNR,дБ", "SSIM", "EPI", "время,мс"
+    );
     for method in methods {
         let selected: Vec<_> = rows.iter().filter(|row| row.method == *method).collect();
         if selected.is_empty() {
@@ -310,10 +322,16 @@ fn print_summary(rows: &[experiment::Row], methods: &[&str]) {
         let s = selected.iter().map(|row| row.ssim).sum::<f64>() / count;
         let e = selected.iter().map(|row| row.epi).sum::<f64>() / count;
         if *method == "bilateral_oracle" {
-            println!("{:<20} {:>10.2} {:>10.4} {:>10.4} {:>12}", method, p, s, e, "—");
+            println!(
+                "{:<20} {:>10.2} {:>10.4} {:>10.4} {:>12}",
+                method, p, s, e, "—"
+            );
         } else {
             let t = selected.iter().map(|row| row.time_ms).sum::<f64>() / count;
-            println!("{:<20} {:>10.2} {:>10.4} {:>10.4} {:>12.1}", method, p, s, e, t);
+            println!(
+                "{:<20} {:>10.2} {:>10.4} {:>10.4} {:>12.1}",
+                method, p, s, e, t
+            );
         }
     }
 }
@@ -326,7 +344,9 @@ fn cmd_bench(args: &Args) {
     let out_dir = args.get_or("o", default_out);
     let sigmas = number_list(args, "noise", "5,10,15,20,30,40");
     let seed: u64 = args.get_or("seed", "12345").parse().unwrap_or(12345);
-    let save_sigma = args.get("save-sigma").map(|value| value.parse().expect("--save-sigma: число"));
+    let save_sigma = args
+        .get("save-sigma")
+        .map(|value| value.parse().expect("--save-sigma: число"));
 
     let rows = if color {
         experiment::run_color_bench(&dir, &out_dir, &sigmas, seed, save_sigma)
@@ -359,11 +379,15 @@ fn cmd_stats(args: &Args) {
     let dir = args.get_or("d", "data/clean");
     let out_dir = args.get_or("o", "results");
     let sigmas = number_list(args, "noise", "5,10,15,20,30,40");
-    let runs: usize = args.get_or("runs", "30").parse().expect("--runs: целое число");
+    let runs: usize = args
+        .get_or("runs", "30")
+        .parse()
+        .expect("--runs: целое число");
     let seed: u64 = args.get_or("seed", "12345").parse().unwrap_or(12345);
     println!("Парные независимые прогоны: {runs}; случаи в каждом прогоне: изображения × sigma");
     let rows = experiment::run_significance(&dir, &sigmas, runs, seed);
-    std::fs::create_dir_all(format!("{out_dir}/tables")).expect("не удалось создать каталог таблиц");
+    std::fs::create_dir_all(format!("{out_dir}/tables"))
+        .expect("не удалось создать каталог таблиц");
     let mut csv = String::from(experiment::significance_csv_header());
     csv.push('\n');
     for row in &rows {
@@ -372,7 +396,11 @@ fn cmd_stats(args: &Args) {
     }
     let path = format!("{out_dir}/tables/significance_runs.csv");
     std::fs::write(&path, csv).expect("не удалось записать статистические прогоны");
-    let mean_delta = rows.iter().map(experiment::SignificanceRow::delta_psnr).sum::<f64>() / rows.len() as f64;
+    let mean_delta = rows
+        .iter()
+        .map(experiment::SignificanceRow::delta_psnr)
+        .sum::<f64>()
+        / rows.len() as f64;
     println!("Средняя парная разница АКСФ − bilateral: {mean_delta:+.3} дБ");
     println!("Сырые пары для t-теста: {path}");
 }
@@ -409,14 +437,19 @@ fn cmd_demo(args: &Args) {
     }
     std::fs::create_dir_all(&out_dir).expect("не удалось создать каталог результатов");
     let methods = ["gauss", "median", "perona", "bilateral", "acsf"];
-    println!("Найдено изображений: {}; режим: {}", files.len(), if color { "YCbCr" } else { "полутон" });
+    println!(
+        "Найдено изображений: {}; режим: {}",
+        files.len(),
+        if color { "YCbCr" } else { "полутон" }
+    );
 
     for (file_index, path) in files.iter().enumerate() {
         let name = path.file_stem().unwrap().to_string_lossy();
         let local_seed = seed.wrapping_add(file_index as u64 * 100);
         println!("=== {name} ===");
         if color {
-            let (r, g, b) = img::load_rgb(path.to_str().unwrap()).expect("ошибка чтения изображения");
+            let (r, g, b) =
+                img::load_rgb(path.to_str().unwrap()).expect("ошибка чтения изображения");
             let clean = img::rgb_to_ycbcr(&r, &g, &b);
             let noisy = if sigma > 0.0 {
                 noise::add_rgb_noise_as_ycbcr(&r, &g, &b, sigma, local_seed)
@@ -430,23 +463,42 @@ fn cmd_demo(args: &Args) {
                 let result = apply_color_filter(&noisy, method, args);
                 let value = metrics::psnr(&clean.y, &result.y, 255.0);
                 img::save_ycbcr(&format!("{out_dir}/{name}_1_{method}.png"), &result).ok();
-                println!("  {method:<12} PSNR(Y)={value:>6.2}  delta={:+.2}", value - baseline);
+                println!(
+                    "  {method:<12} PSNR(Y)={value:>6.2}  delta={:+.2}",
+                    value - baseline
+                );
             }
         } else {
-            let clean = img::GrayF::load(path.to_str().unwrap()).expect("ошибка чтения изображения");
+            let clean =
+                img::GrayF::load(path.to_str().unwrap()).expect("ошибка чтения изображения");
             let noisy = if sigma > 0.0 {
                 noise::add_gaussian_noise(&clean, sigma, local_seed)
             } else {
                 clean.clone()
             };
-            img::save_from_vec(&format!("{out_dir}/{name}_0_noisy.png"), noisy.w, noisy.h, &noisy.data).ok();
+            img::save_from_vec(
+                &format!("{out_dir}/{name}_0_noisy.png"),
+                noisy.w,
+                noisy.h,
+                &noisy.data,
+            )
+            .ok();
             let baseline = metrics::psnr(&clean, &noisy, 255.0);
             println!("  шумное: PSNR = {baseline:.2} дБ");
             for method in methods {
                 let result = apply_filter(&noisy, method, args);
                 let value = metrics::psnr(&clean, &result, 255.0);
-                img::save_from_vec(&format!("{out_dir}/{name}_1_{method}.png"), result.w, result.h, &result.data).ok();
-                println!("  {method:<12} PSNR={value:>6.2}  delta={:+.2}", value - baseline);
+                img::save_from_vec(
+                    &format!("{out_dir}/{name}_1_{method}.png"),
+                    result.w,
+                    result.h,
+                    &result.data,
+                )
+                .ok();
+                println!(
+                    "  {method:<12} PSNR={value:>6.2}  delta={:+.2}",
+                    value - baseline
+                );
             }
         }
     }
@@ -459,7 +511,10 @@ fn cmd_sens(args: &Args) {
     let seed: u64 = args.get_or("seed", "12345").parse().unwrap_or(12345);
     let images = img::load_dir(&dir);
     let params = AcsfParams::default();
-    println!("{:<18} {:>7} {:>11} {:>12} {:>12} {:>10}", "изобр.", "sigma", "оценка", "PSNR авто", "PSNR точно", "разница");
+    println!(
+        "{:<18} {:>7} {:>11} {:>12} {:>12} {:>10}",
+        "изобр.", "sigma", "оценка", "PSNR авто", "PSNR точно", "разница"
+    );
     let (mut automatic, mut exact, mut count) = (0.0, 0.0, 0.0);
     for (image_index, (name, clean)) in images.iter().enumerate() {
         for &sigma in &sigmas {
@@ -469,13 +524,26 @@ fn cmd_sens(args: &Args) {
             let exact_result = filters::acsf_with_sigma(&noisy, &params, sigma);
             let automatic_psnr = metrics::psnr(clean, &automatic_result.img, 255.0);
             let exact_psnr = metrics::psnr(clean, &exact_result.img, 255.0);
-            println!("{:<18} {:>7.1} {:>11.2} {:>12.2} {:>12.2} {:>+10.2}", name, sigma, automatic_result.sigma_n, automatic_psnr, exact_psnr, exact_psnr - automatic_psnr);
+            println!(
+                "{:<18} {:>7.1} {:>11.2} {:>12.2} {:>12.2} {:>+10.2}",
+                name,
+                sigma,
+                automatic_result.sigma_n,
+                automatic_psnr,
+                exact_psnr,
+                exact_psnr - automatic_psnr
+            );
             automatic += automatic_psnr;
             exact += exact_psnr;
             count += 1.0;
         }
     }
-    println!("\nСреднее: авто={:.2} дБ, точный sigma={:.2} дБ, разница={:+.2} дБ", automatic / count, exact / count, (exact - automatic) / count);
+    println!(
+        "\nСреднее: авто={:.2} дБ, точный sigma={:.2} дБ, разница={:+.2} дБ",
+        automatic / count,
+        exact / count,
+        (exact - automatic) / count
+    );
 }
 
 fn cmd_tune(args: &Args) {
@@ -494,7 +562,10 @@ fn cmd_tune(args: &Args) {
     }
     let result = experiment::run_configs(&dir, &configs, &sigmas, seed);
     let mut csv = String::from("config,mean_psnr,mean_ssim,mean_epi\n");
-    println!("\n{:<40} {:>10} {:>10} {:>10}", "конфигурация", "PSNR", "SSIM", "EPI");
+    println!(
+        "\n{:<40} {:>10} {:>10} {:>10}",
+        "конфигурация", "PSNR", "SSIM", "EPI"
+    );
     for (config, per_image, psnr, ssim, epi) in result {
         println!("{config:<40} {psnr:>10.2} {ssim:>10.4} {epi:>10.4}");
         csv.push_str(&format!("\"{config}\",{psnr:.6},{ssim:.6},{epi:.6}\n"));
@@ -517,7 +588,9 @@ fn cmd_sweep(args: &Args) {
     std::fs::create_dir_all("results/tables").ok();
     let mut csv = String::from("param,value,mean_psnr,mean_ssim,min_psnr\n");
     for (name, value, mean_psnr, mean_ssim, minimum_psnr) in result {
-        csv.push_str(&format!("{name},{value},{mean_psnr:.4},{mean_ssim:.6},{minimum_psnr:.4}\n"));
+        csv.push_str(&format!(
+            "{name},{value},{mean_psnr:.4},{mean_ssim:.6},{minimum_psnr:.4}\n"
+        ));
     }
     let path = format!("results/tables/sweep_{parameter}.csv");
     std::fs::write(&path, csv).expect("не удалось записать sweep CSV");

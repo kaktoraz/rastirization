@@ -1,0 +1,38 @@
+
+конфигурация                                   PSNR       SSIM        EPI
+2.0,0.55,2.8,1.0,5,2                          27.27     0.7286     0.4893
+  astronaut          PSNR=26.75 SSIM=0.6337 EPI=0.4906
+  baboon             PSNR=24.02 SSIM=0.6491 EPI=0.5940
+  board              PSNR=23.17 SSIM=0.7817 EPI=0.7310
+  fruits             PSNR=28.96 SSIM=0.7314 EPI=0.2729
+  grace_hopper       PSNR=27.29 SSIM=0.7143 EPI=0.5448
+  gradient_circles   PSNR=33.44 SSIM=0.8616 EPI=0.3027
+2.0,0.7,3.2,1.2,5,2                           27.89     0.7527     0.5216
+  astronaut          PSNR=27.56 SSIM=0.6890 EPI=0.5374
+  baboon             PSNR=23.93 SSIM=0.6160 EPI=0.5757
+  board              PSNR=23.30 SSIM=0.7679 EPI=0.7368
+  fruits             PSNR=29.77 SSIM=0.7792 EPI=0.3111
+  grace_hopper       PSNR=28.02 SSIM=0.7482 EPI=0.5891
+  gradient_circles   PSNR=34.77 SSIM=0.9161 EPI=0.3792
+2.0,0.85,3.6,1.3,5,2                          28.02     0.7558     0.5364
+  astronaut          PSNR=27.86 SSIM=0.7121 EPI=0.5622
+  baboon             PSNR=23.63 SSIM=0.5830 EPI=0.5596
+  board              PSNR=23.08 SSIM=0.7446 EPI=0.7337
+  fruits             PSNR=29.95 SSIM=0.7956 EPI=0.3323
+  grace_hopper       PSNR=28.30 SSIM=0.7607 EPI=0.6118
+  gradient_circles   PSNR=35.30 SSIM=0.9390 EPI=0.4188
+1.5,0.7,3.2,1.2,5,2                           27.51     0.7374     0.5123
+  astronaut          PSNR=27.38 SSIM=0.6635 EPI=0.5309
+  baboon             PSNR=24.21 SSIM=0.6453 EPI=0.5843
+  board              PSNR=23.42 SSIM=0.7806 EPI=0.7375
+  fruits             PSNR=29.52 SSIM=0.7572 EPI=0.3152
+  grace_hopper       PSNR=27.74 SSIM=0.7305 EPI=0.5818
+  gradient_circles   PSNR=32.78 SSIM=0.8473 EPI=0.3243
+2.5,0.7,3.2,1.2,5,2                           27.98     0.7543     0.5264
+  astronaut          PSNR=27.48 SSIM=0.6954 EPI=0.5392
+  baboon             PSNR=23.68 SSIM=0.5969 EPI=0.5719
+  board              PSNR=23.14 SSIM=0.7582 EPI=0.7364
+  fruits             PSNR=29.64 SSIM=0.7813 EPI=0.3080
+  grace_hopper       PSNR=28.07 SSIM=0.7531 EPI=0.5922
+  gradient_circles   PSNR=35.86 SSIM=0.9409 EPI=0.4109
+Таблица калибровки: benchmark-artifact/results/tables/calibration.csv

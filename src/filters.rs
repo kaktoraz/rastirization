@@ -255,16 +255,7 @@ fn bilateral_from_sigma_map(
     let workers = worker_count(img.w, img.h);
     if workers == 1 {
         process_gray_rows(
-            &mut out,
-            0,
-            img.w,
-            side,
-            padded_w,
-            &padded,
-            &img.data,
-            sigma_r,
-            spatial,
-            exp_lut,
+            &mut out, 0, img.w, side, padded_w, &padded, &img.data, sigma_r, spatial, exp_lut,
         );
     } else {
         let rows_per_chunk = img.h.div_ceil(workers);
@@ -276,16 +267,8 @@ fn bilateral_from_sigma_map(
                 let start_y = chunk_index * rows_per_chunk;
                 scope.spawn(move || {
                     process_gray_rows(
-                        out_chunk,
-                        start_y,
-                        img.w,
-                        side,
-                        padded_w,
-                        padded_ref,
-                        &img.data,
-                        sigma_r,
-                        spatial,
-                        exp_lut,
+                        out_chunk, start_y, img.w, side, padded_w, padded_ref, &img.data, sigma_r,
+                        spatial, exp_lut,
                     );
                 });
             }
@@ -389,16 +372,7 @@ fn parallel_horizontal(
     let workers = worker_count(img.w, img.h);
     if workers == 1 {
         process_horizontal_rows(
-            &mut out,
-            0,
-            img.w,
-            radius,
-            padded_w,
-            &padded,
-            &img.data,
-            sigma_r,
-            line,
-            exp_lut,
+            &mut out, 0, img.w, radius, padded_w, &padded, &img.data, sigma_r, line, exp_lut,
         );
     } else {
         let rows_per_chunk = img.h.div_ceil(workers);
@@ -408,16 +382,8 @@ fn parallel_horizontal(
                 let start_y = chunk_index * rows_per_chunk;
                 scope.spawn(move || {
                     process_horizontal_rows(
-                        out_chunk,
-                        start_y,
-                        img.w,
-                        radius,
-                        padded_w,
-                        padded_ref,
-                        &img.data,
-                        sigma_r,
-                        line,
-                        exp_lut,
+                        out_chunk, start_y, img.w, radius, padded_w, padded_ref, &img.data,
+                        sigma_r, line, exp_lut,
                     );
                 });
             }
@@ -434,7 +400,13 @@ fn separable_bilateral_from_sigma_map(
     exp_lut: &ExpLut,
 ) -> GrayF {
     // Первый проход использует исходную яркость и sigma_r строки.
-    let horizontal = parallel_horizontal(img, radius, sigma_r, &spatial_line(radius, sigma_s), exp_lut);
+    let horizontal = parallel_horizontal(
+        img,
+        radius,
+        sigma_r,
+        &spatial_line(radius, sigma_s),
+        exp_lut,
+    );
 
     // Во втором проходе значения берутся из горизонтально сглаженного кадра,
     // а range-весы — из исходной яркости. Поэтому границы определяются той же
@@ -520,10 +492,9 @@ pub fn structural_activity(img: &GrayF, r_struct: usize, sigma_n: f64) -> Vec<f3
             let at = (y + 1) * integral_w + x + 1;
             sum[at] = value + sum[y * integral_w + x + 1] + sum[(y + 1) * integral_w + x]
                 - sum[y * integral_w + x];
-            sum_sq[at] = value * value
-                + sum_sq[y * integral_w + x + 1]
-                + sum_sq[(y + 1) * integral_w + x]
-                - sum_sq[y * integral_w + x];
+            sum_sq[at] =
+                value * value + sum_sq[y * integral_w + x + 1] + sum_sq[(y + 1) * integral_w + x]
+                    - sum_sq[y * integral_w + x];
         }
     }
 
@@ -605,7 +576,11 @@ fn acsf_2d_at_known_sigma(noisy: &GrayF, p: &AcsfParams, sigma_n: f64) -> AcsfRe
     let ranges = sigma_map(&activity, p, sigma_n, &exp_lut);
     let spatial = spatial_table(p.radius, p.sigma_s);
     let img = bilateral_from_sigma_map(noisy, p.radius, &spatial, &ranges, &exp_lut);
-    AcsfResult { img, sigma_n, activity }
+    AcsfResult {
+        img,
+        sigma_n,
+        activity,
+    }
 }
 
 fn acsf_at_known_sigma(noisy: &GrayF, p: &AcsfParams, sigma_n: f64) -> AcsfResult {
@@ -614,7 +589,11 @@ fn acsf_at_known_sigma(noisy: &GrayF, p: &AcsfParams, sigma_n: f64) -> AcsfResul
     let exp_lut = ExpLut::new();
     let ranges = sigma_map(&activity, p, sigma_n, &exp_lut);
     let img = separable_bilateral_from_sigma_map(noisy, p.radius, p.sigma_s, &ranges, &exp_lut);
-    AcsfResult { img, sigma_n, activity }
+    AcsfResult {
+        img,
+        sigma_n,
+        activity,
+    }
 }
 
 /// АКСФ с автоматической оценкой уровня шума по Иммеркеру.
@@ -713,8 +692,8 @@ fn process_ycbcr_rows(
                     let dcb = cb - center_cb;
                     let dcr = cr - center_cr;
                     // Совместный цветовой вес: адаптивная яркость + цветность.
-                    let range = (dy * dy + (dcb * dcb + dcr * dcr) / chroma_factor_sq)
-                        * inv_two_sigma_y_sq;
+                    let range =
+                        (dy * dy + (dcb * dcb + dcr * dcr) / chroma_factor_sq) * inv_two_sigma_y_sq;
                     let weight = spatial[kernel_row + i] * exp_lut.value(range);
                     weights += weight;
                     acc_y += weight * yy;
@@ -804,12 +783,7 @@ fn ycbcr_from_sigma_map(
 }
 
 /// Совместный билатеральный фильтр для цвета с постоянным sigma_r яркости.
-pub fn bilateral_ycbcr(
-    noisy: &YCbCrF,
-    sigma_s: f32,
-    sigma_r_y: f32,
-    radius: usize,
-) -> YCbCrF {
+pub fn bilateral_ycbcr(noisy: &YCbCrF, sigma_s: f32, sigma_r_y: f32, radius: usize) -> YCbCrF {
     let exp_lut = ExpLut::new();
     let ranges = vec![sigma_r_y.max(1e-3); noisy.y.data.len()];
     let spatial = spatial_table(radius, sigma_s);
@@ -855,7 +829,7 @@ mod tests {
                 let gradient = 35.0 + 180.0 * x as f32 / (width - 1) as f32;
                 let circle = if ((x as f32 - width as f32 * 0.62).powi(2)
                     + (y as f32 - height as f32 * 0.45).powi(2))
-                    .sqrt()
+                .sqrt()
                     < width as f32 * 0.18
                 {
                     35.0
@@ -885,7 +859,8 @@ mod tests {
                     }
                 }
                 let variance = (sum_sq - sum * sum / count) / (count - 1.0);
-                out[y as usize * img.w + x as usize] = (variance - sigma * sigma).max(0.0).sqrt() as f32;
+                out[y as usize * img.w + x as usize] =
+                    (variance - sigma * sigma).max(0.0).sqrt() as f32;
             }
         }
         out

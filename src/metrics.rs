@@ -111,10 +111,14 @@ pub fn ssim(a: &GrayF, b: &GrayF) -> f64 {
                     let dx = i as i64 - r as i64;
                     let dy = j as i64 - r as i64;
                     let wgt = ker[j * (2 * r + 1) + i] as f64;
-                    let xa = a.get(x + dx, y + dy) as f64 - ma[(y + dy).clamp(0, a.h as i64 - 1) as usize * w
-                        + (x + dx).clamp(0, a.w as i64 - 1) as usize] as f64;
-                    let xb = b.get(x + dx, y + dy) as f64 - mb[(y + dy).clamp(0, b.h as i64 - 1) as usize * w
-                        + (x + dx).clamp(0, b.w as i64 - 1) as usize] as f64;
+                    let xa = a.get(x + dx, y + dy) as f64
+                        - ma[(y + dy).clamp(0, a.h as i64 - 1) as usize * w
+                            + (x + dx).clamp(0, a.w as i64 - 1) as usize]
+                            as f64;
+                    let xb = b.get(x + dx, y + dy) as f64
+                        - mb[(y + dy).clamp(0, b.h as i64 - 1) as usize * w
+                            + (x + dx).clamp(0, b.w as i64 - 1) as usize]
+                            as f64;
                     va += wgt * xa * xa;
                     vb += wgt * xb * xb;
                     cov += wgt * xa * xb;
@@ -185,9 +189,7 @@ pub fn estimate_noise_sigma(img: &GrayF) -> f64 {
     let mut acc = 0f64;
     for y in 1..img.h as i64 - 1 {
         for x in 1..img.w as i64 - 1 {
-            let r = img.get(x - 1, y - 1)
-                - 2.0 * img.get(x, y - 1)
-                + img.get(x + 1, y - 1)
+            let r = img.get(x - 1, y - 1) - 2.0 * img.get(x, y - 1) + img.get(x + 1, y - 1)
                 - 2.0 * img.get(x - 1, y)
                 + 4.0 * img.get(x, y)
                 - 2.0 * img.get(x + 1, y)
@@ -219,11 +221,7 @@ mod tests {
 
     #[test]
     fn epi_is_one_for_an_identical_nonconstant_image() {
-        let image = GrayF::new(
-            5,
-            5,
-            (0..25).map(|i| ((i * 17) % 251) as f32).collect(),
-        );
+        let image = GrayF::new(5, 5, (0..25).map(|i| ((i * 17) % 251) as f32).collect());
         assert!((epi(&image, &image) - 1.0).abs() < 1e-10);
     }
 }
