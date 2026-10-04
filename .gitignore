@@ -7,7 +7,11 @@
 /my_results/
 
 # Generated benchmark images: regenerate with `bench --save-sigma ...`
-/results/images/
+/results/**/images/
+
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
 
 # Archives and local/editor files
 *.zip

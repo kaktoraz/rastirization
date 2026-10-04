@@ -488,14 +488,22 @@ fn cmd_tune(args: &Args) {
         .collect();
     let sigmas = number_list(args, "noise", "20,30");
     let seed: u64 = args.get_or("seed", "12345").parse().unwrap_or(12345);
+    let output = args.get_or("o", "results/tables/calibration.csv");
+    if let Some(parent) = std::path::Path::new(&output).parent() {
+        std::fs::create_dir_all(parent).expect("не удалось создать каталог калибровки");
+    }
     let result = experiment::run_configs(&dir, &configs, &sigmas, seed);
+    let mut csv = String::from("config,mean_psnr,mean_ssim,mean_epi\n");
     println!("\n{:<40} {:>10} {:>10} {:>10}", "конфигурация", "PSNR", "SSIM", "EPI");
     for (config, per_image, psnr, ssim, epi) in result {
         println!("{config:<40} {psnr:>10.2} {ssim:>10.4} {epi:>10.4}");
+        csv.push_str(&format!("\"{config}\",{psnr:.6},{ssim:.6},{epi:.6}\n"));
         for (name, p, s, e) in per_image {
             println!("  {name:<18} PSNR={p:.2} SSIM={s:.4} EPI={e:.4}");
         }
     }
+    std::fs::write(&output, csv).expect("не удалось записать CSV калибровки");
+    println!("Таблица калибровки: {output}");
 }
 
 fn cmd_sweep(args: &Args) {
