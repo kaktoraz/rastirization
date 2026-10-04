@@ -72,6 +72,11 @@
       "time_ms": 19.4625
     }
   },
+  "performance_512": {
+    "images": 4,
+    "measurements": 24,
+    "acsf_time_ms": 19.269166666666667
+  },
   "significance": {
     "n": 30,
     "bilateral_psnr": 27.253398833333335,
@@ -79,8 +84,8 @@
     "delta_psnr": 3.0993190333333325,
     "delta_std": 0.004495846324249576,
     "t_statistic": 3775.8562571533653,
-    "p_two_sided": 4.348188144894085e-84,
-    "p_one_sided": 2.1740940724470426e-84,
+    "p_two_sided": 4.348188144894053e-84,
+    "p_one_sided": 2.1740940724470266e-84,
     "significant": true
   }
 }

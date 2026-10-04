@@ -12,12 +12,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-from collections import defaultdict
+import math
 from pathlib import Path
 
 import matplotlib
 import numpy as np
-from scipy.stats import ttest_rel
+from PIL import Image
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -103,6 +103,97 @@ def mean(rows: list[dict], method: str, key: str, sigma: float | None = None, im
 
 def fmt(value: float, digits: int = 2) -> str:
     return f"{value:.{digits}f}".replace(".", ",")
+
+
+def _beta_continued_fraction(a: float, b: float, x: float) -> float:
+    """Continued fraction for the regularised incomplete beta function.
+
+    This small Numerical-Recipes-style implementation avoids a SciPy runtime
+    dependency while retaining a two-sided Student t probability suitable for
+    the paired significance table.
+    """
+    tiny = 1e-300
+    c = 1.0
+    d = 1.0 - (a + b) * x / (a + 1.0)
+    d = tiny if abs(d) < tiny else d
+    d = 1.0 / d
+    h = d
+    for m in range(1, 201):
+        m2 = 2.0 * m
+        numerator = m * (b - m) * x / ((a - 1.0 + m2) * (a + m2))
+        d = 1.0 + numerator * d
+        d = tiny if abs(d) < tiny else d
+        c = 1.0 + numerator / c
+        c = tiny if abs(c) < tiny else c
+        d = 1.0 / d
+        h *= d * c
+        numerator = -(a + m) * (a + b + m) * x / ((a + m2) * (a + 1.0 + m2))
+        d = 1.0 + numerator * d
+        d = tiny if abs(d) < tiny else d
+        c = 1.0 + numerator / c
+        c = tiny if abs(c) < tiny else c
+        d = 1.0 / d
+        step = d * c
+        h *= step
+        if abs(step - 1.0) < 3e-14:
+            break
+    return h
+
+
+def regularized_beta(a: float, b: float, x: float) -> float:
+    """I_x(a,b), stable enough for the t-test tails used in this project."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    front = math.exp(
+        math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+        + a * math.log(x)
+        + b * math.log1p(-x)
+    )
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _beta_continued_fraction(a, b, x) / a
+    return 1.0 - front * _beta_continued_fraction(b, a, 1.0 - x) / b
+
+
+def paired_t_test(deltas: np.ndarray) -> tuple[float, float]:
+    """Return t and two-sided p for a one-sample paired-difference t-test."""
+    n = len(deltas)
+    if n < 2:
+        raise ValueError("Для парного t-теста нужны как минимум две пары")
+    standard_deviation = float(np.std(deltas, ddof=1))
+    if standard_deviation < 1e-15:
+        return (math.copysign(math.inf, float(deltas.mean())), 0.0)
+    statistic = float(deltas.mean()) / (standard_deviation / math.sqrt(n))
+    degrees = n - 1
+    x = degrees / (degrees + statistic * statistic)
+    return statistic, regularized_beta(degrees / 2.0, 0.5, x)
+
+
+def grayscale_512_performance(rows: list[dict]) -> dict[str, float | int]:
+    """Aggregate ACSF timing only for real 512×512 source scenes.
+
+    Image dimensions are read from ``data/clean`` rather than copied into the
+    prose, so the result remains tied to the experimental inputs and CSV.
+    """
+    square_names: set[str] = set()
+    for name in {row["image"] for row in rows}:
+        candidates = list((ROOT_REPO / "data" / "clean").glob(f"{name}.*"))
+        if not candidates:
+            continue
+        with Image.open(candidates[0]) as source:
+            if source.size == (512, 512):
+                square_names.add(name)
+    timings = [
+        row["time_ms"]
+        for row in rows
+        if row["method"] == "acsf" and row["image"] in square_names
+    ]
+    return {
+        "images": len(square_names),
+        "measurements": len(timings),
+        "acsf_time_ms": float(np.mean(timings)) if timings else float("nan"),
+    }
 
 
 def available(order: list[str], rows: list[dict]) -> list[str]:
@@ -233,7 +324,7 @@ def analyse_significance(tables: Path) -> dict | None:
     bilateral = np.array([float(row["bilateral_psnr"]) for row in pairs])
     acsf = np.array([float(row["acsf_psnr"]) for row in pairs])
     delta = acsf - bilateral
-    statistic, two_sided = ttest_rel(acsf, bilateral)
+    statistic, two_sided = paired_t_test(delta)
     one_sided = float(two_sided / 2.0) if delta.mean() > 0 else float(1.0 - two_sided / 2.0)
     result = {
         "n": int(len(delta)),
@@ -301,6 +392,7 @@ def main() -> None:
             "images": images,
             "sigmas": sigmas,
             "methods": summary,
+            "performance_512": grayscale_512_performance(rows),
             "significance": analyse_significance(tables),
         }
 

@@ -592,7 +592,7 @@ mod tests {
             image: "scene".into(),
             method: "acsf".into(),
             sigma_noise: 20.0,
-            param: "ss=2.0;kmin=0.7".into(),
+            param: "ss=2.0;kmin=0.85".into(),
             psnr: 25.0,
             ssim: 0.8,
             epi: 0.6,

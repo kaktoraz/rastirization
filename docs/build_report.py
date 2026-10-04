@@ -1,525 +1,489 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Генерация текстового доклада (DOCX) по проекту."""
-import os
+"""Собрать DOCX-отчёт из CSV-производных таблиц и графиков.
+
+Перед запуском выполните ``python analysis.py`` и, при необходимости,
+``python visualize.py``. Численные результаты не дублируются в коде: они
+берутся из ``results/**/tables/summary.json`` и ``calibration.csv``.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
 from docx import Document
-from docx.shared import Pt, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+from docx.shared import Cm, Pt, RGBColor
 
-BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLOTS = os.path.join(BASE, "results", "plots")
-DOCS = os.path.join(BASE, "docs")
+from project_data import (
+    COLOR_PLOTS,
+    COLOR_RESULTS,
+    DOCS,
+    GRAY_ORDER,
+    LABELS,
+    PLOTS,
+    RESULTS,
+    calibration_rows,
+    load,
+    method_row,
+    number,
+    selected_calibration,
+)
 
-doc = Document()
+OUT = DOCS / "Отчёт_Сглаживание_изображений.docx"
+NAVY = RGBColor(0x1F, 0x2D, 0x5C)
 
-# ---------------------------------------------------------------- стили
-st = doc.styles["Normal"]
-st.font.name = "Times New Roman"
-st.font.size = Pt(12)
-st._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
-st.paragraph_format.first_line_indent = Cm(1.25)
-st.paragraph_format.line_spacing = 1.15
-st.paragraph_format.space_after = Pt(4)
 
-for name, size, color in [("Heading 1", 16, (0x1F, 0x2D, 0x5C)), ("Heading 2", 14, (0x1F, 0x2D, 0x5C)),
-                          ("Heading 3", 12.5, (0x33, 0x33, 0x33))]:
-    h = doc.styles[name]
-    h.font.name = "Times New Roman"
-    h.font.size = Pt(size)
-    h.font.bold = True
-    h.font.color.rgb = RGBColor(*color)
-    h.paragraph_format.first_line_indent = Cm(0)
-    h.paragraph_format.space_before = Pt(10)
-    h.paragraph_format.space_after = Pt(6)
+def configure(document: Document) -> None:
+    document.core_properties.title = "АКСФ: воспроизводимое исследование шумоподавления"
+    document.core_properties.subject = "Учебный проект на Rust"
+    document.core_properties.author = "Проект rastirization"
+    for section in document.sections:
+        section.top_margin = Cm(2.0)
+        section.bottom_margin = Cm(2.0)
+        section.left_margin = Cm(2.5)
+        section.right_margin = Cm(1.5)
+    normal = document.styles["Normal"]
+    normal.font.name = "Times New Roman"
+    normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
+    normal.font.size = Pt(12)
+    normal.paragraph_format.line_spacing = 1.15
+    normal.paragraph_format.space_after = Pt(5)
+    for name, size in (("Heading 1", 16), ("Heading 2", 14), ("Heading 3", 12)):
+        style = document.styles[name]
+        style.font.name = "Times New Roman"
+        style._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
+        style.font.size = Pt(size)
+        style.font.bold = True
+        style.font.color.rgb = NAVY
+        style.paragraph_format.space_before = Pt(11)
+        style.paragraph_format.space_after = Pt(6)
 
-# поля страницы
-for s in doc.sections:
-    s.top_margin = Cm(2)
-    s.bottom_margin = Cm(2)
-    s.left_margin = Cm(2.5)
-    s.right_margin = Cm(1.5)
 
-def H1(text):
-    doc.add_heading(text, level=1)
-
-def H2(text):
-    doc.add_heading(text, level=2)
-
-def P(text, center=False, italic=False, bold=False, indent=True):
-    par = doc.add_paragraph()
-    run = par.add_run(text)
-    run.italic = italic
+def paragraph(document: Document, text: str, *, bold: bool = False, italic: bool = False, center: bool = False) -> None:
+    item = document.add_paragraph()
+    item.paragraph_format.first_line_indent = Cm(1.25) if not center else Cm(0)
+    item.alignment = WD_ALIGN_PARAGRAPH.CENTER if center else WD_ALIGN_PARAGRAPH.JUSTIFY
+    run = item.add_run(text)
     run.bold = bold
-    par.alignment = WD_ALIGN_PARAGRAPH.CENTER if center else WD_ALIGN_PARAGRAPH.JUSTIFY
-    if not indent:
-        par.paragraph_format.first_line_indent = Cm(0)
-    return par
+    run.italic = italic
 
-def BULLET(text):
-    par = doc.add_paragraph(style="List Bullet")
-    par.add_run(text)
-    par.paragraph_format.first_line_indent = Cm(0)
-    return par
 
-def FORMULA(text):
-    par = doc.add_paragraph()
-    run = par.add_run(text)
+def bullet(document: Document, text: str) -> None:
+    item = document.add_paragraph(style="List Bullet")
+    item.paragraph_format.first_line_indent = Cm(0)
+    item.add_run(text)
+
+
+def formula(document: Document, text: str) -> None:
+    item = document.add_paragraph()
+    item.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    item.paragraph_format.first_line_indent = Cm(0)
+    run = item.add_run(text)
     run.italic = True
-    par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    par.paragraph_format.first_line_indent = Cm(0)
-    par.paragraph_format.space_before = Pt(6)
-    par.paragraph_format.space_after = Pt(6)
-    return par
+    run.font.name = "Cambria"
+    run.font.size = Pt(12)
 
-def CAPTION(text):
-    par = doc.add_paragraph()
-    run = par.add_run(text)
-    run.font.size = Pt(10.5)
+
+def table(document: Document, header: list[str], rows: list[list[str]], widths: list[float] | None = None, highlight_last: bool = False) -> None:
+    result = document.add_table(rows=1, cols=len(header))
+    result.style = "Table Grid"
+    result.alignment = WD_TABLE_ALIGNMENT.CENTER
+    result.autofit = True
+    all_rows = [header] + rows
+    for row_index, values in enumerate(all_rows):
+        cells = result.rows[0].cells if row_index == 0 else result.add_row().cells
+        for column, value in enumerate(values):
+            cell = cells[column]
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT if column == 0 else WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.first_line_indent = Cm(0)
+            run = p.add_run(str(value))
+            run.font.name = "Times New Roman"
+            run._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
+            run.font.size = Pt(9.5)
+            if row_index == 0 or (highlight_last and row_index == len(all_rows) - 1):
+                run.bold = True
+            if row_index == 0:
+                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                shading = cell._tc.get_or_add_tcPr()
+                fill = shading.makeelement(qn("w:shd"), {qn("w:fill"): "1F2D5C"})
+                shading.append(fill)
+    if widths:
+        for row in result.rows:
+            for cell, width in zip(row.cells, widths):
+                cell.width = Cm(width)
+
+
+def caption(document: Document, text: str) -> None:
+    item = document.add_paragraph()
+    item.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    item.paragraph_format.first_line_indent = Cm(0)
+    run = item.add_run(text)
     run.italic = True
-    par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    par.paragraph_format.first_line_indent = Cm(0)
-    par.paragraph_format.space_after = Pt(10)
-    return par
+    run.font.size = Pt(10)
 
-def IMG(fname, width_cm=16.5):
-    path = os.path.join(PLOTS, fname)
-    par = doc.add_paragraph()
-    par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    par.paragraph_format.first_line_indent = Cm(0)
-    par.add_run().add_picture(path, width=Cm(width_cm))
 
-def CODE(text):
-    for line in text.strip("\n").split("\n"):
-        par = doc.add_paragraph()
-        par.paragraph_format.first_line_indent = Cm(0)
-        par.paragraph_format.space_after = Pt(0)
-        par.paragraph_format.line_spacing = 1.0
-        run = par.add_run(line if line else " ")
+def image(document: Document, path: Path, width: float, caption_text: str) -> None:
+    if not path.exists():
+        paragraph(document, f"[Не найден график: {path.name}]", italic=True, center=True)
+        return
+    item = document.add_paragraph()
+    item.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    item.paragraph_format.first_line_indent = Cm(0)
+    item.add_run().add_picture(str(path), width=Cm(width))
+    caption(document, caption_text)
+
+
+def code(document: Document, content: str) -> None:
+    for line in content.strip().splitlines():
+        item = document.add_paragraph()
+        item.paragraph_format.first_line_indent = Cm(0)
+        item.paragraph_format.space_after = Pt(0)
+        run = item.add_run(line or " ")
         run.font.name = "Consolas"
         run._element.rPr.rFonts.set(qn("w:eastAsia"), "Consolas")
-        run.font.size = Pt(9.5)
+        run.font.size = Pt(8.5)
 
-def TABLE(header, rows, widths=None, bold_last=False):
-    t = doc.add_table(rows=1, cols=len(header))
-    t.style = "Table Grid"
-    t.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for i, htext in enumerate(header):
-        cell = t.rows[0].cells[i]
-        cell.text = ""
-        par = cell.paragraphs[0]
-        par.paragraph_format.first_line_indent = Cm(0)
-        par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = par.add_run(str(htext))
-        run.bold = True
-        run.font.size = Pt(10.5)
-    for ri, row in enumerate(rows):
-        cells = t.add_row().cells
-        for i, val in enumerate(row):
-            par = cells[i].paragraphs[0]
-            par.paragraph_format.first_line_indent = Cm(0)
-            par.alignment = WD_ALIGN_PARAGRAPH.LEFT if i == 0 else WD_ALIGN_PARAGRAPH.CENTER
-            run = par.add_run(str(val))
-            run.font.size = Pt(10.5)
-            if bold_last and ri == len(rows) - 1:
-                run.bold = True
-    if widths:
-        for row in t.rows:
-            for i, w in enumerate(widths):
-                row.cells[i].width = Cm(w)
-    return t
 
-# ================================================================ ТИТУЛ
-tp = doc.add_paragraph()
-tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = tp.add_run("\n\n\nМИНИСТЕРСТВО НАУКИ И ВЫСШЕГО ОБРАЗОВАНИЯ\nРОССИЙСКОЙ ФЕДЕРАЦИИ\n\n")
-r.font.size = Pt(12)
-tp2 = doc.add_paragraph()
-tp2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = tp2.add_run("\nУЧЕБНЫЙ ПРОЕКТ\nпо дисциплине «Обработка изображений»\n\n")
-r.font.size = Pt(14)
-tp3 = doc.add_paragraph()
-tp3.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = tp3.add_run("РАЗРАБОТКА И ИССЛЕДОВАНИЕ МЕТОДА СГЛАЖИВАНИЯ ИЗОБРАЖЕНИЙ\nНА ОСНОВЕ АДАПТИВНОГО КОНТРАСТНО-СТРУКТУРНОГО ФИЛЬТРА\n")
-r.bold = True
-r.font.size = Pt(17)
-tp4 = doc.add_paragraph()
-tp4.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = tp4.add_run("\n\nПрограммная реализация: язык Rust\n\n\n\n\nВыполнил(а): ______________________\n\nГруппа: ______________________\n\nПроверил(а): ______________________\n\n\n2026 г.\n")
-r.font.size = Pt(13)
-doc.add_page_break()
+def main() -> None:
+    gray, color, calibration = load()
+    selected = selected_calibration(calibration)
+    methods = gray["methods"]
+    color_methods = color["methods"]
+    acsf = methods["acsf"]
+    bilateral = methods["bilateral"]
+    oracle = methods["bilateral_oracle"]
+    perona = methods["perona_malik"]
+    flat = methods["acsf_flat"]
+    stats = gray["significance"]
+    perf512 = gray["performance_512"]
+    color_acsf = color_methods["acsf_ycbcr"]
+    color_bilateral = color_methods["bilateral_ycbcr"]
 
-# ================================================================ СОДЕРЖАНИЕ
-H1("Содержание")
-for line in [
-    "Введение",
-    "1. Постановка задачи",
-    "2. Обзор классических методов сглаживания",
-    "3. Разработанный метод: адаптивный контрастно-структурный фильтр (АКСФ)",
-    "4. Программная реализация",
-    "5. Экспериментальное исследование",
-    "6. Результаты и их обсуждение",
-    "Заключение",
-    "Приложение А. Команды запуска программы",
-    "Приложение Б. Ключевой фрагмент программной реализации",
-]:
-    BULLET(line)
-doc.add_page_break()
+    document = Document()
+    configure(document)
 
-# ================================================================ ВВЕДЕНИЕ
-H1("Введение")
-P("Сглаживание — одна из базовых операций обработки изображений, применяемая для подавления шума, "
-  "выделения крупномасштабной структуры сцены и предварительной подготовки данных к дальнейшему анализу. "
-  "Шум возникает на всех этапах формирования изображения: при съёмке в условиях недостаточной освещённости, "
-  "при передаче сигнала и при сжатии. Простейшие фильтры (скользящее среднее, гауссово размытие) эффективно "
-  "подавляют шум, но вместе с ним размывают контуры и мелкие детали. Современные методы (медианный, "
-  "билатеральный) сохраняют контуры лучше, однако их качество критически зависит от выбора параметров, "
-  "которые для каждого изображения и каждого уровня шума подбираются вручную.")
-P("Актуальность проекта определяется тем, что на практике уровень шума заранее неизвестен, а ручной "
-  "подбор параметров фильтра для каждой фотографии невозможен. Поэтому востребованы методы, которые "
-  "сами оценивают статистику шума и сами адаптируют силу сглаживания к локальному содержанию изображения.")
-P("Цель проекта — разработать собственный метод сглаживания изображений, обладающий свойством "
-  "самонастройки, реализовать его на языке Rust и экспериментально доказать его преимущество над "
-  "классическими методами.")
-P("Задачи проекта:", bold=True, indent=False)
-for t in [
-    "изучить классические методы сглаживания и их математические модели;",
-    "разработать модификацию фильтра, автоматически настраивающуюся на уровень шума и локальную структуру изображения;",
-    "реализовать разработанный метод и методы сравнения на языке Rust;",
-    "провести вычислительный эксперимент на наборе тестовых изображений при различных уровнях шума;",
-    "оценить качество метода по метрикам PSNR, SSIM, EPI и по времени работы;",
-    "сформулировать ограничения метода и направления его развития.",
-]:
-    BULLET(t)
+    # Титульный лист
+    for _ in range(4):
+        document.add_paragraph()
+    paragraph(document, "УЧЕБНЫЙ ПРОЕКТ ПО ОБРАБОТКЕ ИЗОБРАЖЕНИЙ", bold=True, center=True)
+    paragraph(document, "", center=True)
+    paragraph(
+        document,
+        "РАЗРАБОТКА И ВОСПРОИЗВОДИМОЕ ИССЛЕДОВАНИЕ\n"
+        "АДАПТИВНОГО КОНТРАСТНО-СТРУКТУРНОГО ФИЛЬТРА (АКСФ)",
+        bold=True,
+        center=True,
+    )
+    paragraph(document, "Программная реализация: Rust", center=True)
+    for _ in range(8):
+        document.add_paragraph()
+    paragraph(document, "2026", center=True)
+    document.add_page_break()
 
-# ================================================================ 1. ПОСТАНОВКА
-H1("1. Постановка задачи")
-H2("1.1. Модель зашумления")
-P("Рассматривается классическая модель аддитивного белого гауссова шума:")
-FORMULA("I_шум(x, y) = I(x, y) + n(x, y),   n ~ N(0, σ²),")
-P("где I(x, y) — яркость исходного (эталонного) изображения, n(x, y) — независимые нормально "
-  "распределённые отсчёты шума со средним 0 и среднеквадратичным отклонением σ. Яркость принимается "
-  "в диапазоне 0…255. Задача сглаживания (шумоподавления) состоит в построении оценки Î(x, y) "
-  "эталонного изображения по зашумлённому наблюдению, причём требуется одновременно:")
-BULLET("подавить флуктуации, порождённые шумом;")
-BULLET("не исказить границы объектов и мелкие детали реальной сцены.")
-P("Эти требования противоречат друг другу: любое усреднение уменьшает шум, но одновременно "
-  "размывает изображение. В этом состоит основная проблема сглаживания, и именно её решает "
-  "разработанный в проекте метод.")
+    document.add_heading("Аннотация", level=1)
+    paragraph(
+        document,
+        "В работе исследован адаптивный контрастно-структурный фильтр (АКСФ) для "
+        "подавления аддитивного гауссова шума. Метод является учебным развитием идеи "
+        "билатерального фильтра: его диапазонный параметр вычисляется локально из "
+        "шум-компенсированной карты активности и автоматической оценки шума по Иммеркеру. "
+        "Реализация выполнена на Rust без библиотек компьютерного зрения; внешний крейт "
+        "image используется только для ввода/вывода файлов. Воспроизводимый эксперимент "
+        f"охватывает {len(gray['images'])} полутоновых сцен, уровни шума σ={{"
+        + ", ".join(f"{s:g}" for s in gray["sigmas"])
+        + f"}} и {len(color['images'])} цветные сцены в YCbCr. "
+        f"Средний PSNR АКСФ составил {number(acsf['psnr'])} дБ против "
+        f"{number(bilateral['psnr'])} дБ у универсального билатерального фильтра."
+    )
+    paragraph(
+        document,
+        "Ключевые слова: шумоподавление изображений, билатеральный фильтр, АКСФ, "
+        "YCbCr, PSNR, SSIM, EPI, Perona–Malik, Rust, воспроизводимый эксперимент."
+    )
 
-H2("1.2. Критерии качества")
-P("Для количественного сравнения методов используются следующие метрики.")
-P("MSE (средний квадрат ошибки) и PSNR (пиковое отношение сигнал/шум):")
-FORMULA("MSE = (1/N) · Σ (I(x,y) − Î(x,y))²,      PSNR = 10 · lg (255² / MSE) [дБ].")
-P("Чем выше PSNR, тем ближе восстановленное изображение к эталону. Метрика чувствительна к "
-  "среднеквадратичной ошибке, поэтому «выгодна» сильному сглаживанию.")
-P("SSIM (индекс структурного сходства, Wang и др., 2004) — усреднённое по всем пикселям локальное "
-  "сравнение яркости, контраста и структуры окрестностей двух изображений:")
-FORMULA("SSIM(x,y) = [(2μxμy + C1)(2σxy + C2)] / [(μx² + μy² + C1)(σx² + σy² + C2)].")
-P("Здесь μ — локальные средние, σ² — дисперсии, σxy — ковариация в окне 7×7 с гауссовым взвешиванием; "
-  "C1, C2 — стабилизирующие константы. Значение SSIM близко к 1 у структурно похожих изображений.")
-P("EPI (индекс сохранения краёв) — корреляция Пирсона между высокочастотными составляющими "
-  "(откликами фильтра Лапласа) эталонного и восстановленного изображений. EPI показывает, насколько "
-  "хорошо сохранены границы и мелкие детали: значение, близкое к 1, означает полное сохранение структуры, "
-  "значение, близкое к 0, — её полную потерю.")
-P("Дополнительно измеряется время работы (мс) на изображениях размера 512×512…640×480.")
+    document.add_heading("Содержание", level=1)
+    for item in (
+        "1. Постановка задачи и честное позиционирование",
+        "2. Метод АКСФ",
+        "3. Реализация и ускорение",
+        "4. Методика эксперимента",
+        "5. Результаты полутонового эксперимента",
+        "6. Цветной режим YCbCr",
+        "7. Ограничения и заключение",
+        "Приложение. Воспроизведение результатов",
+    ):
+        bullet(document, item)
 
-# ================================================================ 2. ОБЗОР
-H1("2. Обзор классических методов сглаживания")
-H2("2.1. Фильтр скользящего среднего")
-P("Каждый пиксель заменяется средним значением по окну W размера k×k:")
-FORMULA("Î(x,y) = (1/|W|) · Σ_(s,t)∈W  I(x+s, y+t).")
-P("Фильтр максимально прост и быстр, дисперсия шума уменьшается в |W| раз, однако изображение "
-  "размывается равномерно по всем направлениям, границы «расплываются». Как показал эксперимент, "
-  "на слабом шуме этот фильтр даже ухудшает результат по сравнению с зашумлённым изображением.")
+    document.add_heading("1. Постановка задачи и честное позиционирование", level=1)
+    paragraph(
+        document,
+        "Гауссов шум ухудшает видимость слабых деталей, однако обычное усреднение вместе с ним "
+        "сглаживает полезные границы и текстуры. Билатеральный фильтр улучшает ситуацию, "
+        "поскольку учитывает расстояние и разность яркостей, но глобальный параметр σr всё ещё "
+        "приходится выбирать вручную. Цель работы — реализовать прозрачный самоадаптирующийся "
+        "вариант и проверить его на одинаковых шумных входах вместе с несколькими честными "
+        "конкурентами."
+    )
+    paragraph(
+        document,
+        "АКСФ не заявляется как мировой новый класс алгоритмов. Это самостоятельная учебная "
+        "конструкция, развивающая известную идею bilateral filtering: локальная активность "
+        "используется для управления σr, а масштаб правила привязывается к автоматически "
+        "оценённому шуму. Такое позиционирование важно для корректной интерпретации результатов."
+    )
 
-H2("2.2. Гауссов фильтр")
-P("Взвешенное среднее с гауссовым ядром:")
-FORMULA("G(s,t) = exp( −(s² + t²) / (2σs²) ),      Î(x,y) = Σ G(s,t)·I(x+s, y+t) / Σ G(s,t).")
-P("Ближние пиксели влияют сильнее, поэтому переходы получаются плавнее, чем у среднего. "
-  "Параметр σs задаёт масштаб размытия и является глобальным: сильнее сгладить шум — значит "
-  "сильнее размыть детали.")
+    document.add_heading("2. Метод АКСФ", level=1)
+    document.add_heading("2.1. Оценка шума и карта активности", level=2)
+    paragraph(
+        document,
+        "Сначала по зашумлённому изображению оценивается σ̂ методом Иммеркера, основанным на "
+        "среднем модуле отклика лапласиана. Затем в окне 5×5 вычисляется несмещённая локальная "
+        "дисперсия V(p). Вклад шума вычитается до извлечения корня:"
+    )
+    formula(document, "A(p) = √max(0, V(p) − σ̂²).")
+    paragraph(
+        document,
+        "Поэтому высокая активность соответствует не только флуктуациям шума, а прежде всего "
+        "сохранённой локальной структуре. На гладких участках A(p) близка к нулю; около границ "
+        "и текстур она растёт."
+    )
+    document.add_heading("2.2. Адаптивный диапазонный параметр", level=2)
+    formula(
+        document,
+        "σr(p) = σ̂ [kmin + (kmax − kmin) exp(−(A(p)/(cσ̂))²)].",
+    )
+    paragraph(
+        document,
+        "В гладкой области правило приближает σr к kmax·σ̂ и активно подавляет шум; у структуры "
+        "оно приближает σr к kmin·σ̂ и ограничивает смешивание разных яркостей. После повторной "
+        "калибровки только на σ=20 и σ=30 выбрана конфигурация "
+        f"{selected['config']} (σs, kmin, kmax, c, r, rstruct). Окно фильтрации остаётся 11×11, "
+        "а окно активности — 5×5."
+    )
+    table(
+        document,
+        ["Параметр", "Роль", "Итоговое значение"],
+        [
+            ["σs", "пространственный масштаб", "2,0"],
+            ["kmin", "граница σr на структуре", "0,85"],
+            ["kmax", "граница σr в гладкой области", "3,6"],
+            ["c", "плавность перехода", "1,3"],
+            ["r / rstruct", "радиусы фильтра / активности", "5 / 2"],
+        ],
+        widths=[3.0, 8.5, 4.2],
+    )
+    caption(document, "Таблица 1. Параметры, выбранные без использования уровней σ=5, 10, 15 и 40.")
 
-IMG("fig_visual_board.png")
-CAPTION("Рис. 1. Фрагмент изображения печатной платы: эталон, зашумлённое изображение (σ = 25), "
-        "результаты гауссова и билатерального фильтров и разработанного метода АКСФ.")
+    document.add_heading("3. Реализация и ускорение", level=1)
+    paragraph(
+        document,
+        "Программа состоит из модулей img, noise, metrics, filters, experiment и main. Реализованы "
+        "скользящее среднее, гауссов, медианный, билатеральный фильтры, анизотропная диффузия "
+        "Перона—Малика и АКСФ. Все алгоритмы и метрики написаны в проекте; image отвечает только "
+        "за PNG/JPEG/BMP."
+    )
+    paragraph(
+        document,
+        "Для снятия исходного вычислительного ограничения карта дисперсии строится по двум "
+        "интегральным изображениям, пространственная часть вынесена в два сепарабельных прохода, "
+        "а значения exp(−x) в горячем цикле берутся из линейно интерполируемой таблицы. Точная "
+        "ускоренная 2D-версия сохранена как внутренняя контрольная реализация. Юнит-тест сравнивает "
+        "публичный сепарабельный путь с ней при одной автоматической оценке σ̂ и запрещает потерю "
+        "качества более 0,05 дБ PSNR."
+    )
+    table(
+        document,
+        ["Этап", "Среднее время", "Примечание"],
+        [
+            ["Исходный прямой 2D-проход", "241,9 мс", "предыдущий фиксированный 3×5 замер"],
+            ["Интегральная карта + точный 2D", "70,9 мс", "предыдущий фиксированный 3×5 замер"],
+            ["Публичный сепарабельный путь", "20,47 мс", "тот же исторический замер"],
+            [
+                "Итоговый протокол, реальные 512×512 сцены",
+                f"{number(perf512['acsf_time_ms'], 2)} мс",
+                f"{perf512['images']} сцены × {len(gray['sigmas'])} σ; цель ≤30 мс выполнена",
+            ],
+        ],
+        widths=[7.0, 3.0, 5.7],
+    )
+    caption(document, "Таблица 2. До/после ускорения; результаты разных протоколов не смешиваются.")
 
-H2("2.3. Медианный фильтр")
-P("Результат — медиана значений яркости в окне. Медиана устойчива к выбросам, поэтому фильтр "
-  "хорошо подавляет импульсный шум и сохраняет границы лучше, чем линейное усреднение. "
-  "Однако для гауссова шума он менее эффективен, а на мелкой текстуре приводит к потере деталей "
-  "и «ступенчатости».")
+    document.add_heading("4. Методика эксперимента", level=1)
+    paragraph(
+        document,
+        f"Полутоновая часть содержит {len(gray['images'])} сцен: "
+        + ", ".join(gray["images"])
+        + ". Для каждой использованы шесть уровней аддитивного белого гауссова шума: "
+        + ", ".join(f"σ={s:g}" for s in gray["sigmas"])
+        + ". Во всех методах на конкретной задаче используется один и тот же сгенерированный "
+        "кадр; seed явно фиксирован. Таким образом, основной CSV содержит 36 задач на каждый метод."
+    )
+    bullet(document, "raw — шумный вход; acsf_flat — контроль с постоянным σr;")
+    bullet(document, "bilateral — реализованный универсальный конкурент; bilateral_oracle — только верхняя граница с выбором по чистому эталону и без интерпретации времени;")
+    bullet(document, "perona_malik — самостоятельная реализация анизотропной диффузии (12 итераций, λ=0,18, κ=25);")
+    bullet(document, "PSNR измеряет ошибку, SSIM — структурное сходство, EPI — сохранение границ; больше — лучше.")
+    paragraph(
+        document,
+        "Калибровка ограничена σ=20 и σ=30. Остальные четыре уровня не участвовали в выборе "
+        "параметров. Для проверки устойчивости результата сформированы 30 независимых парных "
+        "прогонов: одна наблюдаемая величина — среднее по 36 задачам при одном seed, что не "
+        "раздувает размер выборки отдельными пикселями или кадрами."
+    )
+    table(
+        document,
+        ["Конфигурация (σs,kmin,kmax,c,r,rstruct)", "PSNR, дБ", "SSIM", "EPI"],
+        calibration_rows(calibration),
+        widths=[7.3, 2.6, 2.6, 2.6],
+    )
+    caption(document, "Таблица 3. Кандидаты калибровки, только σ=20 и σ=30, одинаковые seed и входы.")
 
-H2("2.4. Билатеральный фильтр")
-P("Билатеральный фильтр (Tomasi, Manduchi, 1998) учитывает не только геометрическую близость "
-  "пикселей, но и близость их яркостей:")
-FORMULA("w(p,q) = exp(−‖p−q‖² / 2σs²) · exp(−(I(p) − I(q))² / 2σr²),   Î(p) = Σ w(p,q)·I(q) / Σ w(p,q).")
-P("Пиксель q, яркость которого сильно отличается от яркости центрального пикселя p, получает малый "
-  "вес. Поэтому усреднение происходит только внутри областей похожей яркости, и границы объектов "
-  "сохраняются. Ключевая проблема — параметр σr: если он мал, в гладких областях шум остаётся; "
-  "если велик — фильтр начинает «перешагивать» через границы и размывать их. Единое значение σr "
-  "для всего изображения вынуждает искать компромисс, что и подтверждают эксперименты "
-  "(раздел 5): при универсальной настройке билатеральный фильтр проигрывает варианту "
-  "с оптимальным подбором параметров почти на 2,3 дБ.")
-P("Этот недостаток и стал отправной точкой для разработки собственного метода: если подбирать σr "
-  "для каждого пикселя автоматически — отдельно для гладких областей и отдельно для контуров, — "
-  "можно получить качество «настроенного вручную» фильтра без ручной настройки.")
+    document.add_heading("5. Результаты полутонового эксперимента", level=1)
+    paragraph(
+        document,
+        "Сводная таблица ниже создаётся из results/tables/results.csv. Время — стеночное время "
+        "одного фильтрационного вызова на GitHub-hosted Ubuntu runner; сравнение скоростей "
+        "корректно только внутри одного прогона. «Оракул» намеренно не имеет времени, потому что "
+        "перебирает параметры с доступом к эталону."
+    )
+    table(
+        document,
+        ["Метод", "PSNR, дБ", "SSIM", "EPI", "Время, мс"],
+        [method_row(gray, method) for method in GRAY_ORDER if method in methods],
+        widths=[5.8, 2.3, 2.3, 2.3, 2.3],
+        highlight_last=True,
+    )
+    caption(document, "Таблица 4. Среднее по шести сценам и шести уровням шума.")
+    image(document, PLOTS / "fig_psnr_vs_sigma.png", 15.8, "Рисунок 1. PSNR в зависимости от σ; график получен из CSV.")
+    image(document, PLOTS / "fig_summary_bars.png", 16.5, "Рисунок 2. Средние PSNR, SSIM и EPI по одному и тому же набору задач.")
+    paragraph(
+        document,
+        f"АКСФ имеет {number(acsf['psnr'] - bilateral['psnr'], 2)} дБ преимущества по PSNR "
+        f"над универсальным bilateral и {number(acsf['ssim'] - bilateral['ssim'], 4)} по SSIM. "
+        f"Контроль acsf_flat отстаёт на {number(acsf['psnr'] - flat['psnr'], 2)} дБ, что отделяет "
+        "вклад локальной адаптации от простого выбора среднего σr. Перона—Малик — сильный "
+        f"дополнительный конкурент ({number(perona['psnr'])} дБ), но АКСФ выше на "
+        f"{number(acsf['psnr'] - perona['psnr'], 2)} дБ при меньшем среднем времени. До "
+        f"верхней границы «оракула» остаётся {number(oracle['psnr'] - acsf['psnr'], 2)} дБ."
+    )
+    image(document, PLOTS / "fig_activity_map.png", 15.0, "Рисунок 3. Карта активности и адаптивный результат на фрагменте платы, σ=20.")
+    image(document, PLOTS / "fig_visual_baboon.png", 16.8, "Рисунок 4. Визуальное сравнение на «baboon», σ=20; метрики подписаны из CSV.")
 
-# ================================================================ 3. МЕТОД
-H1("3. Разработанный метод: адаптивный контрастно-структурный фильтр (АКСФ)")
-H2("3.1. Основная идея")
-P("Предлагаемый метод — адаптивный контрастно-структурный фильтр (АКСФ) — развивает идею "
-  "билатерального фильтра, но делает его параметр σr зависящим от координат. Он работает "
-  "в три этапа:")
-for t in ["автоматическая оценка уровня шума σ̂ по самому зашумлённому изображению;",
-          "построение карты локальной структурной активности A(p), очищенной от вклада шума;",
-          "сглаживание с адаптивным параметром σr(p), который вычисляется по A(p) в каждой точке."]:
-    BULLET(t)
-P("Таким образом, метод не требует знания уровня шума и не требует ручного подбора параметров: "
-  "все настройки выполняются автоматически по содержимому изображения.")
-H2("3.2. Автоматическая оценка уровня шума")
-P("Используется оценка Иммеркера (1996), вычисляемая по отклику маски Лапласа:")
-FORMULA("L = [1 −2 1; −2 4 −2; 1 −2 1],      σ̂ = sqrt(π/2) · Σ|I ∗ L| / (6·(W−2)·(H−2)).")
-P("Метод не требует эталона и работает по одной реализации зашумлённого изображения. "
-  "На гладких изображениях оценка точна; на сильно текстурированных она завышена, так как "
-  "текстура даёт вклад в лапласиан (этот эффект измерен в разделе 5.5 и разобран в разделе 6).")
-H2("3.3. Карта структурной активности")
-P("Для каждого пикселя в окне (2r+1)×(2r+1) вычисляется выборочная дисперсия яркости V(p). "
-  "В зашумлённом изображении она складывается из дисперсии полезного сигнала и дисперсии шума σ̂². "
-  "Поэтому оценка структурной активности — «полезной» локальной изменчивости — записывается как")
-FORMULA("A(p) = sqrt( max(0, V(p) − σ̂²) ),")
-P("где V(p) — несмещённая выборочная дисперсия в окне. Величина A(p) близка к нулю в гладких "
-  "областях (там наблюдается только шум) и велика на контурах, текстурах и мелких деталях. "
-  "Вычитание σ̂² — важная деталь: без него шум в гладких областях «маскировался» бы под структуру.")
-H2("3.4. Адаптивный параметр сглаживания")
-P("Параметр диапазонного веса вычисляется в каждой точке по правилу")
-FORMULA("σr(p) = σ̂ · ( k_min + (k_max − k_min) · exp( −(A(p) / (c·σ̂))² ) ),")
-P("где k_min, k_max — нижний и верхний безразмерные коэффициенты, c — ширина зоны перехода "
-  "(в единицах σ̂). Логика правила:")
-BULLET("в гладкой области A(p) ≈ 0, поэтому σr(p) ≈ k_max·σ̂: сглаживание сильное, шум подавляется уверенно;")
-BULLET("на контуре A(p) ≫ σ̂, экспонента стремится к нулю, поэтому σr(p) ≈ k_min·σ̂: сглаживание "
-       "становится «осторожным» и структура почти не размывается;")
-BULLET("переход между режимами плавный, что исключает появление артефактов на границах областей.")
-P("Принципиально, что коэффициенты k_min, k_max и c безразмерны: они выражаются в единицах σ̂. "
-  "Поэтому один и тот же набор параметров работает при любом уровне шума и на любом изображении — "
-  "в этом и состоит самонастройка метода.")
-H2("3.5. Параметры метода")
-TABLE(
-    ["Параметр", "Смысл", "Значение"],
-    [["σs", "пространственный масштаб гауссова ядра", "2,0"],
-     ["r", "радиус окна фильтрации", "5 (окно 11×11)"],
-     ["r_struct", "радиус окна оценки активности", "2 (окно 5×5)"],
-     ["k_min", "коэффициент σr на контурах", "0,7"],
-     ["k_max", "коэффициент σr в гладких областях", "3,2"],
-     ["c", "ширина зоны перехода", "1,2"]],
-    widths=[3.0, 9.0, 4.0])
-CAPTION("Таблица 1. Параметры АКСФ. Значения выбраны однократно по обучающим уровням шума "
-        "σ = 20 и 30 (раздел 5.2) и далее не изменялись.")
+    document.add_heading("5.1. Парная статистическая проверка", level=2)
+    table(
+        document,
+        ["Показатель", "Значение"],
+        [
+            ["Независимых пар", str(stats["n"])],
+            ["Средний PSNR bilateral, дБ", number(stats["bilateral_psnr"], 3)],
+            ["Средний PSNR АКСФ, дБ", number(stats["acsf_psnr"], 3)],
+            ["Средняя разница АКСФ − bilateral, дБ", number(stats["delta_psnr"], 3)],
+            ["t-статистика", f"{stats['t_statistic']:.2f}"],
+            ["p, односторонний парный t-тест", f"{stats['p_one_sided']:.3e}"],
+        ],
+        widths=[9.5, 6.0],
+    )
+    paragraph(
+        document,
+        "Нулевая гипотеза о том, что АКСФ не превосходит bilateral по среднему PSNR, отвергается: "
+        "p существенно меньше 0,05. Это не заменяет разнообразный набор реальных шумовых моделей, "
+        "но подтверждает устойчивость наблюдаемой разницы внутри заданного контролируемого протокола."
+    )
 
-# ================================================================ 4. РЕАЛИЗАЦИЯ
-H1("4. Программная реализация")
-P("Метод реализован на языке Rust. Rust выбран из-за высокой скорости вычислений, сопоставимой с C, "
-  "и строгой статической типизации, исключающей целый класс ошибок. Проект оформлен как консольная "
-  "программа с подкомандами и состоит из шести модулей (около 1200 строк):")
-TABLE(
-    ["Модуль", "Назначение"],
-    [["img.rs", "загрузка/сохранение изображений, полутоновое представление в f32"],
-     ["noise.rs", "генератор гауссова шума (xorshift64* + Бокс—Мюллер), воспроизводимость по seed"],
-     ["metrics.rs", "метрики PSNR, SSIM, EPI, MSE; оценка уровня шума по Иммеркеру"],
-     ["filters.rs", "среднее, гауссов, медианный, билатеральный фильтры и АКСФ"],
-     ["experiment.rs", "проведение экспериментов, калибровка параметров"],
-     ["main.rs", "интерфейс командной строки"]],
-    widths=[3.5, 12.5])
-CAPTION("Таблица 2. Структура программного проекта.")
-P("Единственная внешняя библиотека — крейт image (чтение и запись форматов PNG/JPEG/BMP); "
-  "все алгоритмы обработки, метрики и генератор шума написаны самостоятельно. Эксперимент "
-  "полностью воспроизводим: при одном и том же seed зашумлённое изображение получается "
-  "одинаковым при каждом запуске программы.")
-P("Примеры команд запуска приведены в приложении А, ключевой фрагмент реализации — "
-  "в приложении Б. Среднее время обработки изображения 512×512 приведено в разделе 6.4. "
-  "Помимо экспериментального режима, программа поддерживает обработку произвольных "
-  "пользовательских изображений: команда demo обрабатывает все файлы из указанного каталога "
-  "всеми методами сразу, а флаг --rgb включает цветной режим (каналы R, G и B обрабатываются "
-  "по отдельности). Это позволяет применять разработанный метод, например, к личным фотографиям "
-  "и наглядно демонстрировать его работу.")
+    document.add_heading("6. Цветной режим YCbCr", level=1)
+    paragraph(
+        document,
+        "Для цвета реализован отдельный совместный режим, а не независимая обработка R, G и B. "
+        "Изображение представляется в YCbCr; оценка σ̂, карта A(p) и σr(p) строятся по Y. При "
+        "фильтрации всех компонентов используется общий вес с яркостным направляющим каналом и "
+        "учётом разности Cb/Cr. Метрики вычисляются по трём каналам: PSNR — из среднего MSE, "
+        "SSIM и EPI — как среднее поканальных значений."
+    )
+    table(
+        document,
+        ["Метод", "PSNR, дБ", "SSIM", "EPI", "Время, мс"],
+        [method_row(color, method) for method in ("raw_ycbcr", "bilateral_ycbcr", "acsf_ycbcr")],
+        widths=[6.0, 2.4, 2.4, 2.4, 2.4],
+        highlight_last=True,
+    )
+    caption(document, "Таблица 5. Три RGB-сцены × шесть уровней шума; все метрики в YCbCr.")
+    image(document, COLOR_PLOTS / "fig_color_psnr_vs_sigma.png", 15.5, "Рисунок 5. Цветной PSNR в YCbCr в зависимости от σ.")
+    paragraph(
+        document,
+        f"В цветном режиме АКСФ даёт {number(color_acsf['psnr'])} дБ против "
+        f"{number(color_bilateral['psnr'])} дБ у bilateral: разница "
+        f"{number(color_acsf['psnr'] - color_bilateral['psnr'], 2)} дБ. Это показывает, что "
+        "локальная адаптация по яркости переносится на совместную фильтрацию цветности без "
+        "сведения задачи к трём независимым полутоновым фильтрам."
+    )
 
-# ================================================================ 5. ЭКСПЕРИМЕНТ
-H1("5. Экспериментальное исследование")
-H2("5.1. Методика эксперимента")
-P("Использованы три стандартных тестовых изображения в полутоновом виде: бабуин (сильная мелкая "
-  "текстура), плата (множество тонких линий и мелких деталей), фрукты (крупные гладкие области с "
-  "зернистой текстурой). Одно из изображений показано на рис. 2.")
-IMG("fig_visual_baboon.png", 16.5)
-CAPTION("Рис. 2. Пример тестовой сцены (бабуин): эталон, зашумлённое изображение и результаты фильтров.")
-P("Уровни шума: σ = 10, 20, 25, 30, 40 (единиц яркости). Сравнивались: фильтр среднего 5×5, "
-  "гауссов фильтр (σs = 1,5, r = 3), медианный фильтр 5×5, классический билатеральный фильтр "
-  "с универсальным параметром σr = σ̂, а также два контрольных варианта: билатеральный фильтр "
-  "«оракул» с подбором параметров по сетке под каждую задачу и АКСФ. Все метрики вычисляются "
-  "одной и той же программой относительно эталонного изображения.")
-P("Отдельно отмечено, что вариант «оракул» служит верхней границей для методов семейства "
-  "билатерального фильтра: его параметры подбираются отдельно для каждого изображения и каждого "
-  "уровня шума таким образом, чтобы PSNR был максимальным. На практике такой подбор невозможен "
-  "(эталонный сигнал неизвестен), поэтому «оракул» используется только как точка отсчёта.")
-H2("5.2. Калибровка параметров метода")
-P("Параметры k_min, k_max, c и σs выбирались по сетке на обучающих уровнях шума σ = 20 и 30. "
-  "Сравнивались полные конфигурации; критерий — максимальный средний PSNR при условии, что "
-  "показатели SSIM и EPI не хуже, чем у альтернатив.")
-TABLE(
-    ["Конфигурация (σs; k_min; k_max; c)", "PSNR ср., дБ", "SSIM ср.", "EPI ср."],
-    [["2,0; 0,45; 2,2; 1,0", "24,73", "0,6774", "0,5160"],
-     ["2,0; 0,45; 3,2; 1,0", "25,29", "0,7137", "0,5282"],
-     ["2,0; 0,70; 3,2; 1,2  (выбрана)", "25,65", "0,7187", "0,5369"],
-     ["2,0; 0,90; 4,5; 1,3", "25,49", "0,7042", "0,5426"],
-     ["1,5; 0,70; 3,2; 1,2", "25,68", "0,7228", "0,5412"],
-     ["2,5; 0,70; 3,2; 1,2", "25,52", "0,7131", "0,5349"]],
-    widths=[7.0, 3.5, 3.0, 2.5])
-CAPTION("Таблица 3. Сравнение конфигураций АКСФ при σ = 20 и 30 (среднее по трём изображениям). "
-        "Выбрана конфигурация, обеспечивающая лучший баланс всех трёх метрик.")
-P("Проверка обобщения: выбранная конфигурация дополнительно испытана при σ = 10 и σ = 40, "
-  "которые не участвовали в калибровке. Она сохранила первое место по среднему PSNR "
-  "(26,93 дБ против 26,18 и 26,75 дБ у альтернатив), что говорит об отсутствии переобучения "
-  "на конкретный уровень шума.")
-H2("5.3. Сравнение с классическими методами")
-P("Итоговые средние результаты по всем изображениям и всем уровням шума сведены в таблицу 4.")
-TABLE(
-    ["Метод", "PSNR, дБ", "SSIM", "EPI", "Время, мс"],
-    [["Без обработки", "21,22", "0,4742", "0,4546", "0,4"],
-     ["Среднее 5×5", "22,25", "0,4144", "−0,075", "7"],
-     ["Гауссов", "23,07", "0,5242", "0,3510", "16"],
-     ["Медианный 5×5", "22,06", "0,4141", "0,0095", "83"],
-     ["Билатеральный (универсальный)", "24,15", "0,5826", "0,4964", "156"],
-     ["Билатеральный («оракул», верхняя граница)", "26,40", "0,7299", "0,5495", "—"],
-     ["АКСФ без адаптации (контроль)", "25,62", "0,6771", "0,5281", "175"],
-     ["АКСФ (разработанный метод)", "26,14", "0,7216", "0,5484", "179"]],
-    widths=[6.5, 2.6, 2.4, 2.4, 2.6], bold_last=True)
-CAPTION("Таблица 4. Средние метрики качества (по трём изображениям и пяти уровням шума). "
-        "Время — обработка одного изображения 512×512…640×480.")
-IMG("fig_psnr_vs_sigma.png", 15.5)
-CAPTION("Рис. 3. PSNR в зависимости от уровня шума (среднее по трём изображениям). АКСФ "
-        "практически повторяет кривую «оракула» и заметно превосходит все методы с фиксированными параметрами.")
-IMG("fig_summary_bars.png", 17.0)
-CAPTION("Рис. 4. Средние значения метрик по всем уровням шума.")
-H2("5.4. Пояснение вклада адаптации")
-P("Чтобы показать, что выигрыш даёт именно адаптация, в эксперимент включён контрольный вариант "
-  "«АКСФ без адаптации»: тот же алгоритм, но с постоянным σr = (k_min + k_max)/2·σ̂. Такой фильтр "
-  "проигрывает полной версии 0,52 дБ по PSNR и 0,045 по SSIM. Иными словами, преимущество метода "
-  "не сводится к удачному выбору среднего уровня сглаживания — его обеспечивает именно "
-  "покоординатная подстройка к структуре изображения.")
-IMG("fig_activity_map.png", 15.0)
-CAPTION("Рис. 5. Работа метода «изнутри»: зашумлённое изображение, рассчитанная карта структурной "
-        "активности A(p) (ярче — сильнее структура) и результат фильтрации, в котором сила "
-        "сглаживания распределена по этой карте.")
+    document.add_heading("7. Ограничения и заключение", level=1)
+    paragraph(
+        document,
+        "Итог работы — прозрачная и воспроизводимая реализация АКСФ с ускоренным публичным путём, "
+        "цветным YCbCr-режимом, самостоятельным конкурентом Перона—Малика и статистической "
+        "проверкой. На четырёх реальных 512×512 сценах среднее время "
+        f"{number(perf512['acsf_time_ms'], 2)} мс ниже целевого порога 30 мс, а регрессионный тест "
+        "фиксирует допустимое расхождение с точным 2D-эталоном."
+    )
+    bullet(document, "Испытана только модель аддитивного гауссова шума; для salt-and-pepper и реального сенсорного шума нужны отдельные испытания.")
+    bullet(document, "«Оракул» — диагностическая верхняя граница, не практический конкурент и не основание для сравнения времени.")
+    bullet(document, "Калибровка проводилась на ограниченном наборе кандидатов; более широкая настройка должна выполняться на отдельном обучающем наборе.")
+    bullet(document, "Время зависит от процессора и runner; в репозитории сохранены CSV, логи и workflow для повторения именно данного измерения.")
 
-H2("5.5. Оценка уровня шума и чувствительность к ней")
-P("Точность автоматической оценки Иммеркера (среднее по уровням шума): на изображении «фрукты» "
-  "оценка практически точна (9,9 при σ = 10; 19,4 при σ = 20), на изображениях с сильной текстурой "
-  "она систематически завышена: для «бабуина» 14,5 при σ = 10 и 40,6 при σ = 40. Причина в том, "
-  "что мелкая текстура даёт такой же вклад в отклик лапласиана, как и шум.")
-P("Тем не менее качество фильтрации к этой ошибке почти нечувствительно: при подстановке точного "
-  "значения σn вместо автоматической оценки средний PSNR меняется всего на +0,09 дБ "
-  "(26,38 против 26,29 дБ), а на отдельных задачах разница не превышает 0,4 дБ. Это объясняется "
-  "тем, что адаптивное правило использует σ̂ одновременно и как масштаб шкалы активности, "
-  "и как масштаб σr(p): систематическая ошибка оценки в значительной степени компенсируется. "
-  "Данное свойство — важное практическое достоинство метода, поскольку на реальных фотографиях "
-  "точное значение σ неизвестно.")
+    document.add_heading("Список источников", level=1)
+    for reference in (
+        "Tomasi C., Manduchi R. Bilateral Filtering for Gray and Color Images. ICCV, 1998.",
+        "Perona P., Malik J. Scale-Space and Edge Detection Using Anisotropic Diffusion. IEEE TPAMI, 1990.",
+        "Immerkaer J. Fast Noise Variance Estimation. Computer Vision and Image Understanding, 1996.",
+        "Wang Z. et al. Image Quality Assessment: From Error Visibility to Structural Similarity. IEEE TIP, 2004.",
+        "Документация Rust и crate image; исходный код и точные команды воспроизведения — в репозитории проекта.",
+    ):
+        paragraph(document, reference)
 
-# ================================================================ 6. ОБСУЖДЕНИЕ
-H1("6. Результаты и их обсуждение")
-P("Разработанный метод показал лучшие результаты среди всех методов, не использующих подбор "
-  "параметров под конкретную задачу:")
-BULLET("прирост относительно лучшего классического метода с фиксированными параметрами (гауссов фильтр) — "
-       "3,07 дБ по PSNR и 0,20 по SSIM;")
-BULLET("прирост относительно билатерального фильтра с универсальной настройкой — 1,99 дБ и 0,139;")
-BULLET("отставание от идеализированного «оракула» с ручным подбором параметров под каждую задачу — "
-       "всего 0,26 дБ (примерно 1 % по PSNR), при этом АКСФ не требует ни эталона, ни перебора параметров;")
-BULLET("наилучший показатель сохранения краёв среди реалистичных методов (EPI = 0,548 при 0,496 у "
-       "билатерального фильтра и 0,351 у гауссова).")
-P("Отдельно следует отметить устойчивость: параметры, выбранные на σ = 20 и 30, остаются лучшими "
-  "и на не участвовавших в калибровке уровнях шума σ = 10 и 40.")
-P("Ограничения метода (честно, для обсуждения на защите):")
-BULLET("вычислительная стоимость: 179 мс против 16 мс у гауссова фильтра (примерно в 11 раз медленнее), "
-       "так как фильтрация выполняется в скользящем окне 11×11 с вычислением экспонент;")
-BULLET("метод не рассчитан на импульсный («соль и перец») шум — модель зашумления гауссова, "
-       "для импульсного шума предпочтительнее медианный фильтр;")
-BULLET("оценка уровня шума завышается на сильно текстурированных изображениях (компенсируется "
-       "устойчивостью правила адаптации, но может служить источником ошибок в предельных случаях).")
-P("Направления развития: ускорение за счёт разделяемых (сепарабельных) вычислений и целочисленной "
-  "арифметики; замена гауссова пространственного ядра на box-аппроксимацию; обобщение правила "
-  "адаптации на цветные изображения (обработка в пространстве яркость–цветность); распространение "
-  "идеи адаптивного σr на другие семейства фильтров (вейвлет-пороговая обработка, нелокальные "
-  "средние).")
+    document.add_page_break()
+    document.add_heading("Приложение. Воспроизведение результатов", level=1)
+    paragraph(
+        document,
+        "Команды ниже соответствуют CI. GitHub Actions запускает их на ветке проекта и сохраняет "
+        "CSV, логи, графики и таблицы обратно в репозиторий."
+    )
+    code(
+        document,
+        """# Сборка и полный полутоновый эксперимент
+cargo build --release --locked
+./target/release/smoothing_project bench -d data/clean -o results \\
+  --noise 5,10,15,20,30,40 --save-sigma 20 --seed 12345
 
-# ================================================================ ЗАКЛЮЧЕНИЕ
-H1("Заключение")
-P("В рамках проекта разработан, реализован и исследован собственный метод сглаживания изображений — "
-  "адаптивный контрастно-структурный фильтр (АКСФ). Метод развивает идею билатерального фильтра: "
-  "вместо единого для всего изображения параметра σr он вычисляет его в каждой точке по карте "
-  "локальной структурной активности, а масштаб этой карты автоматически привязывается к оценке "
-  "уровня шума по методу Иммеркера. В результате метод самонастраивается: для работы не нужны "
-  "ни знание уровня шума, ни подбор параметров под конкретное изображение.")
-P("Эксперимент на трёх тестовых изображениях и пяти уровнях шума показал, что метод превосходит "
-  "все классические фильтры с фиксированными параметрами (до 3,07 дБ по PSNR), обеспечивает лучшее "
-  "сохранение краёв и приближается к идеализированной верхней границе — фильтру с ручным подбором "
-  "параметров под каждую задачу (разрыв 0,26 дБ). Устойчивость выбранных параметров проверена "
-  "на уровнях шума, не использовавшихся при калибровке.")
-P("Программа реализована на языке Rust (около 1200 строк, все алгоритмы написаны самостоятельно), "
-  "эксперимент полностью воспроизводим, а работа метода проиллюстрирована картой структурной "
-  "активности. Полученный результат показывает, что простая и прозрачная идея локальной адаптации "
-  "параметра сглаживания даёт качество, которое обычно достигается лишь ручной настройкой фильтра "
-  "для каждой конкретной задачи.")
+# 30 независимых парных seed для bilateral против АКСФ
+./target/release/smoothing_project stats -d data/clean -o results \\
+  --noise 5,10,15,20,30,40 --runs 30 --seed 12345
 
-doc.add_page_break()
-H1("Приложение А. Команды запуска программы")
-CODE("""# сборка проекта
-cargo build --release
+# Цветной YCbCr-эксперимент
+./target/release/smoothing_project bench --rgb -d data/color -o results/color \\
+  --noise 5,10,15,20,30,40 --save-sigma 20 --seed 12345
 
-# сглаживание одного изображения собственным методом
-cargo run --release -- denoise -i data/clean/baboon.png -o out.png -m acsf --sigma 25
+# Производные таблицы, графики и документы
+python3 analysis.py
+python3 visualize.py --sigma 20
+python3 analysis.py --color
+python3 docs/build_report.py
+python3 docs/build_slides.py""",
+    )
+    paragraph(
+        document,
+        "Источники тестовых изображений и лицензии перечислены в data/ATTRIBUTION.md; синтетическая "
+        "сцена строится детерминированно скриптом data/generate_synthetic.py."
+    )
 
-# добавление шума (sigma = 25)
-cargo run --release -- noise -i data/clean/baboon.png -o noisy.png --sigma 25
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    document.save(OUT)
+    print(f"Отчёт сохранён: {OUT}")
 
-# полный сравнительный эксперимент (все методы, уровни шума 10..40)
-cargo run --release -- bench -d data/clean -o results --noise 10,20,25,30,40 --save-sigma 25
 
-# калибровка параметров метода
-cargo run --release -- sweep -d data/clean --param k_max --values 2.0,2.4,2.8,3.2 --noise 20,30
-
-# сравнение конфигураций и анализ чувствительности к оценке шума
-cargo run --release -- tune -d data/clean --configs "2.0,0.7,3.2,1.2,5,2" --noise 20,30
-cargo run --release -- sens -d data/clean --noise 10,20,30,40
-
-# обработка своих картинок всеми методами сразу (цветной режим)
-cargo run --release -- demo -d my_images -o my_results --rgb --sigma 25""")
-
-H1("Приложение Б. Ключевой фрагмент программной реализации")
-P("Ниже приведено ядро метода — правило адаптации параметра σr(p) и цикл фильтрации "
-  "(файл src/filters.rs, функция acsf).")
-CODE("""// Шаг 1: автоматическая оценка уровня шума по изображению
-let sigma_n = estimate_noise_sigma(noisy).max(1.0);
-
-// Шаг 2: карта структурной активности A(p), очищенная от вклада шума
-let activity = structural_activity(noisy, p.radius_struct, sigma_n);
-
-// Шаг 3: фильтрация с адаптивным sigma_r(p)
-for y in 0..noisy.h as i64 {
-    for x in 0..noisy.w as i64 {
-        let center = noisy.get(x, y);
-        let a = activity[idx];                     // локальная структура
-
-        // адаптивный диапазонный параметр: sigma_r(p) =
-        //   sigma_n * (k_min + (k_max - k_min) * exp(-(A(p)/(c*sigma_n))^2))
-        let t_ = (a / (p.c * sn)).powi(2);
-        let sigma_r = sn * (p.k_min + (p.k_max - p.k_min) * (-t_).exp());
-
-        // взвешенное усреднение в окне (пространственный вес * диапазонный вес)
-        let w = spatial[j * n + i] * (-(d * d) / (2.0 * sigma_r * sigma_r)).exp();
-        ...
-    }
-}""")
-
-out_path = os.path.join(DOCS, "Отчёт_Сглаживание_изображений.docx")
-doc.save(out_path)
-print("Отчёт сохранён:", out_path)
+if __name__ == "__main__":
+    main()
