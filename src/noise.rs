@@ -52,3 +52,42 @@ pub fn add_gaussian_noise(img: &crate::img::GrayF, sigma: f64, seed: u64) -> cra
     }
     crate::img::GrayF::new(img.w, img.h, out)
 }
+
+/// Добавляет независимый гауссов шум к RGB-изображению и переводит результат
+/// в YCbCr. Это соответствует модели шума цветной камеры: один и тот же
+/// уровень sigma задаётся в исходных каналах R, G, B, но разные seed не дают
+/// искусственной корреляции между ними.
+pub fn add_rgb_noise_as_ycbcr(
+    r: &crate::img::GrayF,
+    g: &crate::img::GrayF,
+    b: &crate::img::GrayF,
+    sigma: f64,
+    seed: u64,
+) -> crate::img::YCbCrF {
+    let nr = add_gaussian_noise(r, sigma, seed);
+    let ng = add_gaussian_noise(g, sigma, seed.wrapping_add(1));
+    let nb = add_gaussian_noise(b, sigma, seed.wrapping_add(2));
+    crate::img::rgb_to_ycbcr(&nr, &ng, &nb)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::img::GrayF;
+
+    #[test]
+    fn rng_is_deterministic_for_same_seed() {
+        let mut left = Rng::new(1234);
+        let mut right = Rng::new(1234);
+        for _ in 0..20 {
+            assert_eq!(left.next_u64(), right.next_u64());
+        }
+    }
+
+    #[test]
+    fn zero_sigma_does_not_change_image() {
+        let image = GrayF::new(3, 2, vec![0.0, 1.0, 127.0, 240.0, 254.0, 255.0]);
+        let noisy = add_gaussian_noise(&image, 0.0, 7);
+        assert_eq!(image.data, noisy.data);
+    }
+}

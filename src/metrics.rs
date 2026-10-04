@@ -200,3 +200,30 @@ pub fn estimate_noise_sigma(img: &GrayF) -> f64 {
     let n = ((img.w - 2) * (img.h - 2)) as f64;
     (PI as f64 / 2.0).sqrt() * acc / (6.0 * n)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identical_images_have_infinite_psnr() {
+        let image = GrayF::new(3, 3, vec![42.0; 9]);
+        assert!(psnr(&image, &image, 255.0).is_infinite());
+    }
+
+    #[test]
+    fn constant_image_has_zero_noise_estimate() {
+        let image = GrayF::new(12, 10, vec![123.0; 120]);
+        assert!(estimate_noise_sigma(&image).abs() < 1e-12);
+    }
+
+    #[test]
+    fn epi_is_one_for_an_identical_nonconstant_image() {
+        let image = GrayF::new(
+            5,
+            5,
+            (0..25).map(|i| ((i * 17) % 251) as f32).collect(),
+        );
+        assert!((epi(&image, &image) - 1.0).abs() < 1e-10);
+    }
+}
